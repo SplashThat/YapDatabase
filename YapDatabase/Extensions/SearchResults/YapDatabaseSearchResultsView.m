@@ -2,6 +2,7 @@
 #import "YapDatabaseSearchResultsViewPrivate.h"
 #import "YapDatabaseExtensionPrivate.h"
 #import "YapDatabaseFullTextSearch.h"
+#import "YapDatabaseSecondaryIndex.h"
 #import "YapDatabaseViewPrivate.h"
 #import "YapDatabasePrivate.h"
 #import "YapDatabaseLogging.h"
@@ -85,6 +86,7 @@
 
 @synthesize parentViewName = parentViewName;
 @synthesize fullTextSearchName = fullTextSearchName;
+@synthesize secondaryIndexName = secondaryIndexName;
 
 - (id)initWithFullTextSearchName:(NSString *)inFullTextSearchName
                   parentViewName:(NSString *)inParentViewName
@@ -131,6 +133,54 @@
 	return self;
 }
 
+- (id)initWithSecondaryIndexName:(NSString *)inSecondaryIndexName
+                  parentViewName:(NSString *)inParentViewName
+                      versionTag:(NSString *)inVersionTag
+                         options:(YapDatabaseSearchResultsViewOptions *)inOptions
+{
+    NSAssert(inSecondaryIndexName != nil, @"Invalid inSecondaryIndexName");
+    NSAssert(inParentViewName != nil, @"Invalid parentViewName");
+    
+    if ((self = [super init]))
+    {
+        secondaryIndexName = [inSecondaryIndexName copy];
+        parentViewName = [inParentViewName copy];
+        
+        versionTag = inVersionTag ? [inVersionTag copy] : @"";
+        
+        options = inOptions ? [inOptions copy] : [[YapDatabaseSearchResultsViewOptions alloc] init];
+    }
+    return self;
+}
+
+- (id)initWithSecondaryIndexName:(NSString *)inSecondaryIndexName
+                        grouping:(YapDatabaseViewGrouping *)grouping
+                         sorting:(YapDatabaseViewSorting *)sorting
+                      versionTag:(NSString *)inVersionTag
+                         options:(YapDatabaseSearchResultsViewOptions *)inOptions
+{
+    NSAssert(inSecondaryIndexName != nil, @"Invalid parameter: inSecondaryIndexName == nil");
+    
+    NSAssert(grouping != NULL, @"Invalid parameter: grouping == nil");
+    NSAssert(sorting != NULL, @"Invalid parameter: sorting == nil");
+    
+    if ((self = [super init]))
+    {
+        secondaryIndexName = [inSecondaryIndexName copy];
+        
+        groupingBlock = grouping.groupingBlock;
+        groupingBlockType = grouping.groupingBlockType;
+        
+        sortingBlock = sorting.sortingBlock;
+        sortingBlockType = sorting.sortingBlockType;
+        
+        versionTag = inVersionTag ? [inVersionTag copy] : @"";
+        
+        options = inOptions ? [inOptions copy] : [[YapDatabaseSearchResultsViewOptions alloc] init];
+    }
+    return self;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma mark Registration
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,19 +190,40 @@
 	if (![super supportsDatabase:database withRegisteredExtensions:registeredExtensions])
 		return NO;
 	
-	YapDatabaseExtension *ext = [registeredExtensions objectForKey:fullTextSearchName];
-	if (ext == nil)
-	{
-		YDBLogWarn(@"The specified fullTextSearchName (%@) isn't registered", fullTextSearchName);
-		return NO;
-	}
+    YapDatabaseExtension *ext;
+    if (fullTextSearchName)
+    {
+        ext = [registeredExtensions objectForKey:fullTextSearchName];
+        if (ext == nil)
+        {
+            YDBLogWarn(@"The specified fullTextSearchName (%@) isn't registered", fullTextSearchName);
+            return NO;
+        }
+        
+        if (![ext isKindOfClass:[YapDatabaseFullTextSearch class]])
+        {
+            YDBLogWarn(@"The specified fullTextSearchName (%@) isn't a YapDatabaseFullTextSearch extension",
+                       fullTextSearchName);
+            return NO;
+        }
+    }
+    else
+    {
+        ext = [registeredExtensions objectForKey:secondaryIndexName];
+        if (ext == nil)
+        {
+            YDBLogWarn(@"The specified secondaryIndexName (%@) isn't registered", secondaryIndexName);
+            return NO;
+        }
+        
+        if (![ext isKindOfClass:[YapDatabaseSecondaryIndex class]])
+        {
+            YDBLogWarn(@"The specified secondaryIndexName (%@) isn't a YapDatabaseSecondaryIndex extension",
+                       secondaryIndexName);
+            return NO;
+        }
+    }
 	
-	if (![ext isKindOfClass:[YapDatabaseFullTextSearch class]])
-	{
-		YDBLogWarn(@"The specified fullTextSearchName (%@) isn't a YapDatabaseFullTextSearch extension",
-				   fullTextSearchName);
-		return NO;
-	}
 	
 	if (parentViewName)
 	{
@@ -183,10 +254,10 @@
 - (NSSet *)dependencies
 {
 	if (parentViewName) {
-		return [NSSet setWithObjects:fullTextSearchName, parentViewName, nil];
+        return [NSSet setWithObjects:fullTextSearchName ?: secondaryIndexName, parentViewName, nil];
 	}
 	else {
-		return [NSSet setWithObject:fullTextSearchName];
+        return [NSSet setWithObject:fullTextSearchName ?: secondaryIndexName];
 	}
 }
 

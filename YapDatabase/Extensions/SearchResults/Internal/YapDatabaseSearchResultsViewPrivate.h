@@ -2,7 +2,7 @@
 #import "YapDatabaseSearchResultsViewOptions.h"
 #import "YapDatabaseSearchResultsViewConnection.h"
 #import "YapDatabaseSearchResultsViewTransaction.h"
-
+#import "YapDatabaseQuery.h"
 #import "YapDatabaseViewPrivate.h"
 
 /**
@@ -32,6 +32,7 @@ static NSString *const changeset_key_query = @"query";
 	
 	NSString *parentViewName;
 	NSString *fullTextSearchName;
+    NSString *secondaryIndexName;
 }
 
 - (NSString *)snippetTableName;
@@ -45,13 +46,18 @@ static NSString *const changeset_key_query = @"query";
 @interface YapDatabaseSearchResultsViewConnection () {
 @private
 	
-	NSString *query;
+	NSString *ftsQuery;
+    YapDatabaseQuery *indexQuery;
 	BOOL queryChanged;
 }
 
-- (NSString *)query;
-- (void)setQuery:(NSString *)newQuery isChange:(BOOL)isChange;
-- (void)getQuery:(NSString **)queryPtr wasChanged:(BOOL *)wasChangedPtr;
+- (NSString *)ftsQuery;
+- (void)setFTSQuery:(NSString *)newQuery isChange:(BOOL)isChange;
+- (void)getFTSQuery:(NSString **)queryPtr wasChanged:(BOOL *)wasChangedPtr;
+
+- (YapDatabaseQuery *)indexQuery;
+- (void)setIndexQuery:(YapDatabaseQuery *)newQuery isChange:(BOOL)isChange;
+- (void)getIndexQuery:(YapDatabaseQuery **)queryPtr wasChanged:(BOOL *)wasChangedPtr;
 
 - (sqlite3_stmt *)snippetTable_getForRowidStatement;
 - (sqlite3_stmt *)snippetTable_setForRowidStatement;

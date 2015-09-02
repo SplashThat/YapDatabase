@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import "YapDatabaseQuery.h"
 
 /**
  * The YapDatabaseSearchQueue class assists in UI based searches,
@@ -23,7 +24,13 @@
  * Use this method to enqueue the proper query.
  * This is generally done when the search field changes (due to user interaction).
 **/
-- (void)enqueueQuery:(NSString *)query;
+- (void)enqueueFTSQuery:(NSString*)query;
+
+/**
+ * Use this method to enqueue the proper query.
+ * This is generally done when the search field changes (due to user interaction).
+ **/
+- (void)enqueueSecondaryIndexQuery:(YapDatabaseQuery*)query;
 
 /**
  * These methods allow you to inspect the queue.

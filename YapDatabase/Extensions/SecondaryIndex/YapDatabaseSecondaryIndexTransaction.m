@@ -1311,6 +1311,120 @@ static NSString *const ext_key_version_deprecated = @"version";
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#pragma mark Individual Query
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+- (BOOL)rowid:(int64_t)rowid matches:(YapDatabaseQuery *)query
+{
+    if (query == nil) return NO;
+    
+    // Create full query using given filtering clause(s)
+    
+    NSMutableString *queryString = [query.queryString mutableCopy];
+    [queryString replaceOccurrencesOfString:@"WHERE " withString:@"WHERE \"rowid\" = ? AND (" options:NSCaseInsensitiveSearch range:NSMakeRange(0, queryString.length)];
+    [queryString appendString:@")"];
+    NSString *fullQueryString = [NSString stringWithFormat:@"SELECT \"rowid\" FROM \"%@\" %@;", [self tableName], [queryString copy]];
+    
+    // Turn query into compiled sqlite statement.
+    // Use cache if possible.
+    
+    sqlite3_stmt *statement = NULL;
+    
+    YapDatabaseStatement *wrapper = [secondaryIndexConnection->queryCache objectForKey:fullQueryString];
+    if (wrapper)
+    {
+        statement = wrapper.stmt;
+    }
+    else
+    {
+        sqlite3 *db = databaseTransaction->connection->db;
+        
+        int status = sqlite3_prepare_v2(db, [fullQueryString UTF8String], -1, &statement, NULL);
+        if (status != SQLITE_OK)
+        {
+            YDBLogError(@"%@: Error creating query:\n query: '%@'\n error: %d %s",
+                        THIS_METHOD, fullQueryString, status, sqlite3_errmsg(db));
+            
+            return NO;
+        }
+        
+        if (secondaryIndexConnection->queryCache)
+        {
+            wrapper = [[YapDatabaseStatement alloc] initWithStatement:statement];
+            [secondaryIndexConnection->queryCache setObject:wrapper forKey:fullQueryString];
+        }
+    }
+    
+    // Bind query parameters appropriately.
+    
+    sqlite3_bind_int64(statement, 1, rowid);
+    
+    int i = 2;
+    for (id value in query.queryParameters)
+    {
+        if ([value isKindOfClass:[NSNumber class]])
+        {
+            __unsafe_unretained NSNumber *cast = (NSNumber *)value;
+            
+            CFNumberType numType = CFNumberGetType((__bridge CFNumberRef)cast);
+            
+            if (numType == kCFNumberFloatType   ||
+                numType == kCFNumberFloat32Type ||
+                numType == kCFNumberFloat64Type ||
+                numType == kCFNumberDoubleType  ||
+                numType == kCFNumberCGFloatType  )
+            {
+                double num = [cast doubleValue];
+                sqlite3_bind_double(statement, i, num);
+            }
+            else
+            {
+                int64_t num = [cast longLongValue];
+                sqlite3_bind_int64(statement, i, (sqlite3_int64)num);
+            }
+        }
+        else if ([value isKindOfClass:[NSDate class]])
+        {
+            __unsafe_unretained NSDate *cast = (NSDate *)value;
+            
+            double num = [cast timeIntervalSinceReferenceDate];
+            sqlite3_bind_double(statement, i, num);
+        }
+        else if ([value isKindOfClass:[NSString class]])
+        {
+            __unsafe_unretained NSString *cast = (NSString *)value;
+            
+            sqlite3_bind_text(statement, i, [cast UTF8String], -1, SQLITE_TRANSIENT);
+        }
+        else
+        {
+            YDBLogWarn(@"Unable to bind value for with unsupported class: %@", NSStringFromClass([value class]));
+        }
+        
+        i++;
+    }
+    
+    // Execute query
+    
+    BOOL result = NO;
+    int status = sqlite3_step(statement);
+    if (status == SQLITE_ROW)
+    {
+        result = YES;
+    }
+    else if (status != SQLITE_DONE)
+    {
+        YDBLogError(@"%@ - sqlite_step error: %d %s", THIS_METHOD,
+                    status, sqlite3_errmsg(databaseTransaction->connection->db));
+    }
+    
+    sqlite3_clear_bindings(statement);
+    sqlite3_reset(statement);
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma mark Standard Query - Count
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

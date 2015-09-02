@@ -115,4 +115,8 @@
 - (id)initWithSecondaryIndexConnection:(YapDatabaseSecondaryIndexConnection *)secondaryIndexConnection
                    databaseTransaction:(YapDatabaseReadTransaction *)databaseTransaction;
 
+- (BOOL)_enumerateRowidsMatchingQuery:(YapDatabaseQuery *)query
+                           usingBlock:(void (^)(int64_t rowid, BOOL *stop))block;
+- (BOOL)rowid:(int64_t)rowid matches:(YapDatabaseQuery *)query;
+
 @end

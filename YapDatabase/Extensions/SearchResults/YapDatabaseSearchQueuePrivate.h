@@ -6,7 +6,7 @@
 
 @interface YapDatabaseSearchQueue ()
 
-- (NSString *)flushQueue;
+- (id)flushQueue;
 
 - (BOOL)shouldAbortSearchInProgressAndRollback:(BOOL *)shouldRollbackPtr;
 

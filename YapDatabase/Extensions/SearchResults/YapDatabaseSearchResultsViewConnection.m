@@ -85,7 +85,8 @@
 	YDBLogAutoTrace();
 	[super postRollbackCleanup];
 	
-	query = nil;
+	ftsQuery = nil;
+    indexQuery = nil;
 	queryChanged = NO;
 }
 
@@ -125,7 +126,7 @@
 		if (internalChangeset == nil)
 			internalChangeset = [NSMutableDictionary dictionaryWithSharedKeySet:sharedKeySetForInternalChangeset];
 		
-		internalChangeset[changeset_key_query] = query;
+        internalChangeset[changeset_key_query] = ftsQuery ?: indexQuery;
 		
 		hasDiskChanges = hasDiskChanges || [self isPersistentView];
 	}
@@ -143,7 +144,12 @@
 	NSString *changeset_query = changeset[changeset_key_query];
 	if (changeset_query)
 	{
-		query = [changeset_query copy];
+        if ([changeset_query isKindOfClass:[YapDatabaseQuery class]]) {
+            indexQuery = (YapDatabaseQuery*)changeset_query;
+        }
+        else {
+            ftsQuery = [changeset_query copy];
+        }
 	}
 }
 
@@ -221,13 +227,13 @@
 #pragma mark Internal
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-- (NSString *)query
+- (NSString *)ftsQuery
 {
 	__block NSString *result = nil;
 	
 	dispatch_block_t block = ^{
 		
-		result = query;
+		result = ftsQuery;
 	};
 	
 	if (dispatch_get_specific(databaseConnection->IsOnConnectionQueueKey))
@@ -238,20 +244,53 @@
 	return result;
 }
 
-- (void)setQuery:(NSString *)newQuery isChange:(BOOL)isChange
+- (void)setFTSQuery:(NSString *)newQuery isChange:(BOOL)isChange
 {
 	NSAssert(dispatch_get_specific(databaseConnection->IsOnConnectionQueueKey), @"Expected to be on connectionQueue");
 	
-	query = [newQuery copy];
+	ftsQuery = [newQuery copy];
 	queryChanged = queryChanged || isChange;
 }
 
-- (void)getQuery:(NSString **)queryPtr wasChanged:(BOOL *)wasChangedPtr
+- (void)getFTSQuery:(NSString **)queryPtr wasChanged:(BOOL *)wasChangedPtr
 {
 	NSAssert(dispatch_get_specific(databaseConnection->IsOnConnectionQueueKey), @"Expected to be on connectionQueue");
 	
-	if (queryPtr) *queryPtr = query;
+	if (queryPtr) *queryPtr = ftsQuery;
 	if (wasChangedPtr) *wasChangedPtr = queryChanged;
+}
+
+- (YapDatabaseQuery *)indexQuery
+{
+    __block YapDatabaseQuery *result = nil;
+    
+    dispatch_block_t block = ^{
+        
+        result = indexQuery;
+    };
+    
+    if (dispatch_get_specific(databaseConnection->IsOnConnectionQueueKey))
+        block();
+    else
+        dispatch_sync(databaseConnection->connectionQueue, block);
+    
+    return result;
+}
+
+- (void)setIndexQuery:(YapDatabaseQuery *)newQuery isChange:(BOOL)isChange
+{
+    NSAssert(dispatch_get_specific(databaseConnection->IsOnConnectionQueueKey), @"Expected to be on connectionQueue");
+    
+    indexQuery = newQuery;
+    queryChanged = queryChanged || isChange;
+}
+
+- (void)getIndexQuery:(YapDatabaseQuery **)queryPtr wasChanged:(BOOL *)wasChangedPtr
+{
+    NSAssert(dispatch_get_specific(databaseConnection->IsOnConnectionQueueKey), @"Expected to be on connectionQueue");
+    
+    if (queryPtr) *queryPtr = indexQuery;
+    if (wasChangedPtr) *wasChangedPtr = queryChanged;
 }
 
 /**
