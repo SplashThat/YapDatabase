@@ -30,7 +30,8 @@
 static NSString *const ext_key_superclassVersion = @"viewClassVersion";
 static NSString *const ext_key_subclassVersion   = @"searchResultViewClassVersion";
 static NSString *const ext_key_query             = @"query";
-
+static NSString *const ext_key_indexquery        = @"indexquery";
+static NSString *const ext_key_indexquery_param  = @"indexquery_parameters";
 
 @implementation YapDatabaseSearchResultsViewTransaction
 {
@@ -228,6 +229,17 @@ static NSString *const ext_key_query             = @"query";
 		[searchResultsConnection setFTSQuery:query isChange:NO];
 	}
 	
+    if (searchResultsView->secondaryIndexName && [searchResultsConnection indexQuery] == nil)
+    {
+        NSString *queryString = [self stringValueForExtensionKey:ext_key_indexquery persistent:[self isPersistentView]];
+        
+        NSString *parameters = [self stringValueForExtensionKey:ext_key_indexquery_param persistent:[self isPersistentView]];
+        
+        YapDatabaseQuery *query = [YapDatabaseQuery queryWithString: queryString parameters:[parameters componentsSeparatedByString:@","]];
+        
+        [searchResultsConnection setIndexQuery:query isChange:NO];
+    }
+    
 	return YES;
 }
 
@@ -1082,10 +1094,24 @@ static NSString *const ext_key_query             = @"query";
         
         if (queryChanged)
         {
-		[self setStringValue:query forExtensionKey:ext_key_query persistent:[self isPersistentView]];
+            [self setStringValue:query forExtensionKey:ext_key_query persistent:[self isPersistentView]];
         }
     }
 	
+    if (searchResultsView->secondaryIndexName)
+    {
+        YapDatabaseQuery *query = nil;
+        BOOL queryChanged = NO;
+        [searchResultsViewConnection getIndexQuery:&query wasChanged:&queryChanged];
+        
+        if (queryChanged)
+        {
+            [self setStringValue:query.queryString forExtensionKey:ext_key_indexquery persistent:[self isPersistentView]];
+            
+            [self setStringValue:[query.queryParameters componentsJoinedByString:@","]forExtensionKey:ext_key_indexquery_param persistent:[self isPersistentView]];
+        }
+    }
+    
 	// This must be done LAST.
 	[super flushPendingChangesToExtensionTables];
 }
