@@ -154,8 +154,8 @@
 }
 
 - (id)initWithSecondaryIndexName:(NSString *)inSecondaryIndexName
-                        grouping:(YapDatabaseViewGrouping *)grouping
-                         sorting:(YapDatabaseViewSorting *)sorting
+                        grouping:(YapDatabaseViewGrouping *)inGrouping
+                         sorting:(YapDatabaseViewSorting *)inSorting
                       versionTag:(NSString *)inVersionTag
                          options:(YapDatabaseSearchResultsViewOptions *)inOptions
 {
@@ -168,11 +168,8 @@
     {
         secondaryIndexName = [inSecondaryIndexName copy];
         
-        groupingBlock = grouping.groupingBlock;
-        groupingBlockType = grouping.groupingBlockType;
-        
-        sortingBlock = sorting.sortingBlock;
-        sortingBlockType = sorting.sortingBlockType;
+        grouping = inGrouping;
+        sorting = inSorting;
         
         versionTag = inVersionTag ? [inVersionTag copy] : @"";
         
