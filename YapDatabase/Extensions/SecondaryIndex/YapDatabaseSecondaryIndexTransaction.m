@@ -1316,7 +1316,7 @@ static NSString *const ext_key_version_deprecated = @"version";
 
 - (BOOL)rowid:(int64_t)rowid matches:(YapDatabaseQuery *)query
 {
-    if (query == nil) return NO;
+    if ([query.queryString length] == 0) return YES;
     
     // Create full query using given filtering clause(s)
     
