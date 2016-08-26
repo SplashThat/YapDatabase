@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		07ABF99E1D704B15007B5607 /* TestYapDatabaseSecondaryIndexSearchResultsView.m in Sources */ = {isa = PBXBuildFile; fileRef = 07ABF99D1D704B15007B5607 /* TestYapDatabaseSecondaryIndexSearchResultsView.m */; };
 		1E15D25851399B5D89307351 /* libPods.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 26683EB35E436E50FDE31B26 /* libPods.a */; };
 		DC5F53D01B7AAA12009F4E2F /* libPods.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 26683EB35E436E50FDE31B26 /* libPods.a */; };
 		DC84005B175132E7003BFBB2 /* libsqlite3.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DC84005A175132E7003BFBB2 /* libsqlite3.dylib */; };
@@ -46,6 +47,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		07ABF99D1D704B15007B5607 /* TestYapDatabaseSecondaryIndexSearchResultsView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = TestYapDatabaseSecondaryIndexSearchResultsView.m; path = ../../UnitTesting/TestYapDatabaseSecondaryIndexSearchResultsView.m; sourceTree = "<group>"; };
 		26683EB35E436E50FDE31B26 /* libPods.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libPods.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DA75AA5331268A759ABEDDB /* Pods.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.debug.xcconfig; path = "Pods/Target Support Files/Pods/Pods.debug.xcconfig"; sourceTree = "<group>"; };
 		C664F403092FD32225EA855D /* Pods.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.release.xcconfig; path = "Pods/Target Support Files/Pods/Pods.release.xcconfig"; sourceTree = "<group>"; };
@@ -140,6 +142,7 @@
 			isa = PBXGroup;
 			children = (
 				DC36A7041A23F42400DB95FB /* TestYapDatabaseSearchResultsView.m */,
+				07ABF99D1D704B15007B5607 /* TestYapDatabaseSecondaryIndexSearchResultsView.m */,
 			);
 			name = SearchResultsView;
 			sourceTree = "<group>";
@@ -382,6 +385,7 @@
 					};
 					DCFBF7031B45F2D700EC6DFF = {
 						CreatedOnToolsVersion = 6.4;
+						TestTargetID = DC84FF8A175130D2003BFBB2;
 					};
 				};
 			};
@@ -473,6 +477,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DCFBF71B1B45F92200EC6DFF /* TestNodes.m in Sources */,
+				07ABF99E1D704B15007B5607 /* TestYapDatabaseSecondaryIndexSearchResultsView.m in Sources */,
 				DCFBF7331B45FE9B00EC6DFF /* TestYapDatabaseFilteredView.m in Sources */,
 				DCFBF7221B45F9F700EC6DFF /* TestObject.m in Sources */,
 				DCFBF7371B45FEAA00EC6DFF /* TestYapDatabaseSearchResultsView.m in Sources */,
