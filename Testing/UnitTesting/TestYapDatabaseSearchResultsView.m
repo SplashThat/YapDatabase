@@ -363,7 +363,7 @@
 	
 	[connection1 readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
 		
-		[[transaction ext:@"searchResults"] performSearchFor:query];
+		[[transaction ext:@"searchResults"] performFTSSearchFor:query];
 		
 		[[transaction ext:@"searchResults"] enumerateKeysAndObjectsInGroup:@""
 		                    usingBlock:^(NSString *collection, NSString *key, id object, NSUInteger index, BOOL *stop)
@@ -388,7 +388,7 @@
 
 	[connection1 readWithBlock:^(YapDatabaseReadTransaction *transaction) {
 		
-		NSString *connectionQuery = [[transaction ext:@"searchResults"] query];
+		NSString *connectionQuery = [[transaction ext:@"searchResults"] ftsQuery];
 		XCTAssertTrue([connectionQuery isEqualToString:query], @"Oops");
 		
 		NSUInteger count = [[transaction ext:@"searchResults"] numberOfItemsInGroup:@""];
@@ -397,7 +397,7 @@
 	
 	[connection2 readWithBlock:^(YapDatabaseReadTransaction *transaction) {
 		
-		NSString *connectionQuery = [[transaction ext:@"searchResults"] query];
+		NSString *connectionQuery = [[transaction ext:@"searchResults"] ftsQuery];
 		XCTAssertTrue([connectionQuery isEqualToString:query], @"Oops");
 		
 		NSUInteger count = [[transaction ext:@"searchResults"] numberOfItemsInGroup:@""];
@@ -411,7 +411,7 @@
 	
 	[connection1 readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
 		
-		[[transaction ext:@"searchResults"] performSearchFor:query];
+		[[transaction ext:@"searchResults"] performFTSSearchFor:query];
 		
 		[[transaction ext:@"searchResults"] enumerateKeysAndObjectsInGroup:@""
 		                    usingBlock:^(NSString *collection, NSString *key, id object, NSUInteger index, BOOL *stop)
@@ -439,7 +439,7 @@
 	
 	[connection1 readWithBlock:^(YapDatabaseReadTransaction *transaction) {
 		
-		NSString *connectionQuery = [[transaction ext:@"searchResults"] query];
+		NSString *connectionQuery = [[transaction ext:@"searchResults"] ftsQuery];
 		XCTAssertTrue([connectionQuery isEqualToString:query], @"Oops");
 		
 		NSUInteger count = [[transaction ext:@"searchResults"] numberOfItemsInGroup:@""];
@@ -448,7 +448,7 @@
 	
 	[connection2 readWithBlock:^(YapDatabaseReadTransaction *transaction) {
 		
-		NSString *connectionQuery = [[transaction ext:@"searchResults"] query];
+		NSString *connectionQuery = [[transaction ext:@"searchResults"] ftsQuery];
 		XCTAssertTrue([connectionQuery isEqualToString:query], @"Oops");
 		
 		NSUInteger count = [[transaction ext:@"searchResults"] numberOfItemsInGroup:@""];
