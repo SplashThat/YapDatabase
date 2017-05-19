@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name         = "YapDatabase"
-  s.version      = "2.9.1"
+  s.version      = "2.7.3"
   s.summary      = "A key/value store built atop sqlite for iOS & Mac."
   s.homepage     = "https://github.com/yapstudios/YapDatabase"
   s.license      = 'MIT'
@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
     "Robbie Hanson" => "robbiehanson@deusty.com"
   }
   s.source = {
-    :git => "https://github.com/yapstudios/YapDatabase.git",
+    :git => "https://github.com/SplashThat/YapDatabase.git",
     :tag => s.version.to_s
   }
   
@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
   s.tvos.deployment_target = '9.0'
   s.watchos.deployment_target = '2.0'
   
-  s.module_map = "Framework/module.modulemap"
+  s.module_map = "YapDatabase/module.modulemap"
   s.libraries  = 'c++'
   
   s.default_subspecs = 'Standard'
