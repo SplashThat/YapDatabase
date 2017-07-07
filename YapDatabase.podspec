@@ -8,7 +8,7 @@ Pod::Spec.new do |s|
   s.osx.deployment_target = '10.8'
   s.author       = { "Robbie Hanson" => "robbiehanson@deusty.com" }
   s.source       = { :git => "https://github.com/SplashThat/YapDatabase.git", :tag => s.version.to_s }
-  s.module_map   = "YapDatabase/module.modulemap"
+  s.module_map   = "YapDatabase/YapDatabase.modulemap"
   s.libraries = 'c++'
   
   s.default_subspec = 'standard'
