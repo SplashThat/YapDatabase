@@ -1188,7 +1188,7 @@
 /**
  * This method looks up a whole bunch of pageKeys using only a few queries.
  *
- * @param rowids
+ * @param rowidsPtr
  *     On input, includes all the rowids to lookup.
  *     On output, includes all the valid rowids. That is, those rowids that are in the view.
  * 

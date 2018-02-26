@@ -26,7 +26,7 @@
  * The startMatchText is inserted before matched terms/phrases, and also before injected ellipses text.
  * It is used to mark the beginning of special text within the snippet.
  *
- * If not set, it will be the defaultStartMatchText: @"<b>"
+ * If not set, it will be the defaultStartMatchText: @"\<b>"
  *
  * @see defaultStartMatchText
 **/
@@ -36,7 +36,7 @@
  * The endMatchText is inserted after matched terms/phrases, and also after injected ellipses text.
  * It is used to mark the end of special text within the snippet.
  *
- * If not set, it will be the defaultEndMatchText: @"</b>"
+ * If not set, it will be the defaultEndMatchText: @"\</b>"
  *
  * @see defaultEndMatchText
 **/

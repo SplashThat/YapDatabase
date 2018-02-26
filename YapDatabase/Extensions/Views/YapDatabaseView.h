@@ -30,37 +30,67 @@
  * https://github.com/yapstudios/YapDatabase/wiki/Views#wiki-initializing_a_view
  *
  * @param grouping
- * 
  *   The grouping block handles both filtering and grouping.
  *   There are multiple groupingBlock types that are supported.
  *   
  *   @see YapDatabaseViewTypes.h for block type definitions.
  * 
  * @param sorting
- * 
  *   The sorting block handles sorting of objects within their group.
  *   There are multiple sortingBlock types that are supported.
  *   
  *   @see YapDatabaseViewTypes.h for block type definitions.
  *
- * @param versionTag
+**/
+- (instancetype)initWithGrouping:(YapDatabaseViewGrouping *)grouping
+                         sorting:(YapDatabaseViewSorting *)sorting;
+
+/**
  *
+ * @param grouping
+ *   The grouping block handles both filtering and grouping.
+ *   There are multiple groupingBlock types that are supported.
+ *
+ *   @see YapDatabaseViewTypes.h for block type definitions.
+ *
+ * @param sorting
+ *   The sorting block handles sorting of objects within their group.
+ *   There are multiple sortingBlock types that are supported.
+ *
+ *   @see YapDatabaseViewTypes.h for block type definitions.
+ *
+ * @param versionTag
+ *   If, after creating a view, you need to change either the groupingBlock or sortingBlock,
+ *   then simply use the versionTag parameter. If you pass a versionTag that is different from the last
+ *   initialization of the view, then the view will automatically flush its tables, and re-populate itself.
+ *
+ **/
+- (instancetype)initWithGrouping:(YapDatabaseViewGrouping *)grouping
+                         sorting:(YapDatabaseViewSorting *)sorting
+                      versionTag:(NSString *)versionTag;
+
+/**
+ *
+ * @param grouping
+ *   The grouping block handles both filtering and grouping.
+ *   There are multiple groupingBlock types that are supported.
+ *
+ *   @see YapDatabaseViewTypes.h for block type definitions.
+ *
+ * @param sorting
+ *   The sorting block handles sorting of objects within their group.
+ *   There are multiple sortingBlock types that are supported.
+ *
+ *   @see YapDatabaseViewTypes.h for block type definitions.
+ *
+ * @param versionTag
  *   If, after creating a view, you need to change either the groupingBlock or sortingBlock,
  *   then simply use the versionTag parameter. If you pass a versionTag that is different from the last
  *   initialization of the view, then the view will automatically flush its tables, and re-populate itself.
  *
  * @param options
- *
  *   The options allow you to specify things like creating an in-memory-only view (non persistent).
-**/
-
-- (instancetype)initWithGrouping:(YapDatabaseViewGrouping *)grouping
-                         sorting:(YapDatabaseViewSorting *)sorting;
-
-- (instancetype)initWithGrouping:(YapDatabaseViewGrouping *)grouping
-                         sorting:(YapDatabaseViewSorting *)sorting
-                      versionTag:(NSString *)versionTag;
-
+ **/
 - (instancetype)initWithGrouping:(YapDatabaseViewGrouping *)grouping
                          sorting:(YapDatabaseViewSorting *)sorting
                       versionTag:(NSString *)versionTag

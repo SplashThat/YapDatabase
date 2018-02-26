@@ -65,7 +65,7 @@
  * 
  *   The block (and blockType) that handles extracting secondary index information from a row in the database.
  * 
- * @param version
+ * @param versionTag
  * 
  *   If, after creating the secondary index(es), you need to change the setup or block,
  *   then simply increment the version parameter. If you pass a version that is different from the last
@@ -94,7 +94,7 @@
  * 
  *   The block (and blockType) that handles extracting secondary index information from a row in the database.
  * 
- * @param version
+ * @param versionTag
  * 
  *   If, after creating the secondary index(es), you need to change the setup or block,
  *   then simply increment the version parameter. If you pass a version that is different from the last

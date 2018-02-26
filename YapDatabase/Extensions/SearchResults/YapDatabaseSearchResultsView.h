@@ -29,22 +29,18 @@
  * This is conceptually similar to a YapDatabaseFilteredView,
  * where the filterBlock is automatically created according to the search parameter(s).
  * 
- * @param ftsName
- * 
+ * @param fullTextSearchName
  *   The registeredName of a YapDatabaseFullTextSearch extension.
  *   The fts extension must already be registered with the database system.
  * 
- * @param viewName
- * 
+ * @param parentViewName
  *   The registeredName of a YapDatabaseView extension.
  *   The view extension must already be registered with the database system.
  * 
  * @param versionTag
- * 
  *   The standard versionTag mechanism.
  * 
  * @param options
- * 
  *   Extended options for the extension.
  *   You may pass nil to get the default extended options.
 **/
@@ -59,26 +55,21 @@
  * Rather, you simply want to perform a search using a YapDatabaseFullTextSearch extension,
  * and then provide a groupingBlock / sortingBlock in order to present the results.
  * 
- * @param ftsName
- * 
+ * @param fullTextSearchName
  *   The registeredName of a YapDatabaseFullTextSearch extension.
  *   The fts extension must already be registered with the database system.
  * 
- * @param groupingBlock
- * 
+ * @param grouping
  *   The groupingBlock is used to place search results into proper sections.
  *   The block may also be used to perform secondary filtering.
  * 
- * @param sortingBlock
- * 
+ * @param sorting
  *   The sortingBlock is used to sort search results within their respective sections.
  * 
  * @param versionTag
- * 
  *   The standard versionTag mechanism.
  * 
  * @param options
- * 
  *   Extended options for the extension.
  *   You may pass nil to get the default extended options.
  * 
@@ -104,23 +95,20 @@
  * where the filterBlock is automatically created according to the search parameter(s).
  *
  * @param secondaryIndexName
- *
  *   The registeredName of a YapDatabaseSecondaryIndex extension.
  *   The YapDatabaseSecondaryIndex extension must already be registered with the database system.
  *
- * @param viewName
- *
+ * @param parentViewName
  *   The registeredName of a YapDatabaseView extension.
  *   The view extension must already be registered with the database system.
  *
  * @param versionTag
- *
  *   The standard versionTag mechanism.
  *
  * @param options
- *
  *   Extended options for the extension.
  *   You may pass nil to get the default extended options.
+ *
  **/
 - (id)initWithSecondaryIndexName:(NSString *)secondaryIndexName
                   parentViewName:(NSString *)parentViewName
@@ -134,25 +122,20 @@
  * and then provide a groupingBlock / sortingBlock in order to present the results.
  *
  * @param secondaryIndexName
- *
  *   The registeredName of a YapDatabaseSecondaryIndex extension.
  *   The YapDatabaseSecondaryIndex extension must already be registered with the database system.
  *
- * @param groupingBlock
- *
+ * @param grouping
  *   The groupingBlock is used to place search results into proper sections.
  *   The block may also be used to perform secondary filtering.
  *
- * @param sortingBlock
- *
+ * @param sorting
  *   The sortingBlock is used to sort search results within their respective sections.
  *
  * @param versionTag
- *
  *   The standard versionTag mechanism.
  *
  * @param options
- *
  *   Extended options for the extension.
  *   You may pass nil to get the default extended options.
  *

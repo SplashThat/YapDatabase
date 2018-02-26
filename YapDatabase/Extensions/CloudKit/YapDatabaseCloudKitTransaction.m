@@ -3672,10 +3672,10 @@ static BOOL ClassVersionsAreCompatible(int oldClassVersion, int newClassVersion)
  * In other words, YapDatbaseCloudKit will write the system fields of the given CKRecord to its internal table,
  * and associate it with the given collection/key tuple.
  *
- * @param record
+ * @param inRecord
  *   The CKRecord to associate with the collection/key tuple.
  *
- * @param databaseIdentifer
+ * @param databaseIdentifier
  *   The identifying string for the CKDatabase.
  *   @see YapDatabaseCloudKitDatabaseIdentifierBlock.
  *
@@ -3685,7 +3685,7 @@ static BOOL ClassVersionsAreCompatible(int oldClassVersion, int newClassVersion)
  * @param collection
  *   The collection of the row to associate the record with.
  *
- * @param shouldUpload
+ * @param shouldUploadRecord
  *   If NO, then the record is simply associated with the collection/key,
  *     and YapDatabaseCloudKit doesn't attempt to push the record to the cloud.
  *   If YES, then the record is associated with the collection/key,
@@ -3840,7 +3840,7 @@ static BOOL ClassVersionsAreCompatible(int oldClassVersion, int newClassVersion)
  *   Note: If a record was deleted remotely, and the record was associated with MULTIPLE items in the database,
  *   then you should be sure to invoke this method for each attached collection/key.
  *
- * @param shouldUpload
+ * @param shouldUploadDeletion
  *   Whether or not the extension should push a deleted CKRecordID to the cloud.
  *   In use case #2 (from the above discussion, concerning migration), you'd pass NO.
  *   In use case #3 (from the above discussion, concerning moving), you'd pass YES.
