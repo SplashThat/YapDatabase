@@ -203,7 +203,7 @@ static NSString *const ext_key_class = @"class";
 	BOOL allKeysRemoved;
 }
 
-- (id)initWithDatabase:(YapDatabase *)database;
+- (id)initWithDatabase:(YapDatabase *)database tag:(NSString *)tag;
 
 - (sqlite3_stmt *)beginTransactionStatement;
 - (sqlite3_stmt *)commitTransactionStatement;

@@ -70,60 +70,69 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 #define DEFAULT_MAX_CONNECTION_POOL_COUNT 5    // connections
 #define DEFAULT_CONNECTION_POOL_LIFETIME  90.0 // seconds
 
+static BOOL logToConsole = NO;
 
 @implementation YapDatabase {
 @private
-	
-	YapDatabaseOptions *options;
-	
-	sqlite3 *db; // Used for setup & checkpoints
-	
-	NSMutableArray *changesets;
-	uint64_t snapshot;
-	
-	dispatch_queue_t internalQueue;
-	dispatch_queue_t checkpointQueue;
-	
-	YapDatabaseConnectionDefaults *connectionDefaults;
-	
-	NSDictionary *registeredExtensions;
-	NSDictionary *registeredMemoryTables;
-	
-	NSArray *extensionsOrder;
-	NSDictionary *extensionDependencies;
-	
-	YapDatabaseConnection *registrationConnection;
-	
-	NSUInteger maxConnectionPoolCount;
-	NSTimeInterval connectionPoolLifetime;
-	dispatch_source_t connectionPoolTimer;
-	NSMutableArray *connectionPoolValues;
-	NSMutableArray *connectionPoolDates;
-	
-	NSString *sqliteVersion;
-	uint64_t pageSize;
+    
+    YapDatabaseOptions *options;
+    
+    sqlite3 *db; // Used for setup & checkpoints
+    
+    NSMutableArray *changesets;
+    uint64_t snapshot;
+    
+    dispatch_queue_t internalQueue;
+    dispatch_queue_t checkpointQueue;
+    
+    YapDatabaseConnectionDefaults *connectionDefaults;
+    
+    NSDictionary *registeredExtensions;
+    NSDictionary *registeredMemoryTables;
+    
+    NSArray *extensionsOrder;
+    NSDictionary *extensionDependencies;
+    
+    YapDatabaseConnection *registrationConnection;
+    
+    NSUInteger maxConnectionPoolCount;
+    NSTimeInterval connectionPoolLifetime;
+    dispatch_source_t connectionPoolTimer;
+    NSMutableArray *connectionPoolValues;
+    NSMutableArray *connectionPoolDates;
+    
+    NSString *sqliteVersion;
+    uint64_t pageSize;
+}
+
++ (void)setLogToConsole:(BOOL)enabled {
+    logToConsole = enabled;
+}
+
++ (BOOL)logToConsole {
+    return logToConsole;
 }
 
 /**
  * The default serializer & deserializer use NSCoding (NSKeyedArchiver & NSKeyedUnarchiver).
  * Thus the objects need only support the NSCoding protocol.
-**/
+ **/
 + (YapDatabaseSerializer)defaultSerializer
 {
-	return ^ NSData* (NSString __unused *collection, NSString __unused *key, id object){
-		return [NSKeyedArchiver archivedDataWithRootObject:object];
-	};
+    return ^ NSData* (NSString __unused *collection, NSString __unused *key, id object){
+        return [NSKeyedArchiver archivedDataWithRootObject:object];
+    };
 }
 
 /**
  * The default serializer & deserializer use NSCoding (NSKeyedArchiver & NSKeyedUnarchiver).
  * Thus the objects need only support the NSCoding protocol.
-**/
+ **/
 + (YapDatabaseDeserializer)defaultDeserializer
 {
-	return ^ id (NSString __unused *collection, NSString __unused *key, NSData *data){
-		return data && data.length > 0 ? [NSKeyedUnarchiver unarchiveObjectWithData:data] : nil;
-	};
+    return ^ id (NSString __unused *collection, NSString __unused *key, NSData *data){
+        return data && data.length > 0 ? [NSKeyedUnarchiver unarchiveObjectWithData:data] : nil;
+    };
 }
 
 /**
@@ -132,15 +141,15 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
  *
  * Property lists make a good fit when your existing code already uses them,
  * such as replacing NSUserDefaults with a database.
-**/
+ **/
 + (YapDatabaseSerializer)propertyListSerializer
 {
-	return ^ NSData* (NSString __unused *collection, NSString __unused *key, id object){
-		return [NSPropertyListSerialization dataWithPropertyList:object
-		                                                  format:NSPropertyListBinaryFormat_v1_0
-		                                                 options:NSPropertyListImmutable
-		                                                   error:NULL];
-	};
+    return ^ NSData* (NSString __unused *collection, NSString __unused *key, id object){
+        return [NSPropertyListSerialization dataWithPropertyList:object
+                                                          format:NSPropertyListBinaryFormat_v1_0
+                                                         options:NSPropertyListImmutable
+                                                           error:NULL];
+    };
 }
 
 /**
@@ -149,55 +158,55 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
  *
  * Property lists make a good fit when your existing code already uses them,
  * such as replacing NSUserDefaults with a database.
-**/
+ **/
 + (YapDatabaseDeserializer)propertyListDeserializer
 {
-	return ^ id (NSString __unused *collection, NSString __unused *key, NSData *data){
-		return [NSPropertyListSerialization propertyListWithData:data options:0 format:NULL error:NULL];
-	};
+    return ^ id (NSString __unused *collection, NSString __unused *key, NSData *data){
+        return [NSPropertyListSerialization propertyListWithData:data options:0 format:NULL error:NULL];
+    };
 }
 
 /**
  * A FASTER serializer than the default, if serializing ONLY a NSDate object.
  * You may want to use timestampSerializer & timestampDeserializer if your metadata is simply an NSDate.
-**/
+ **/
 + (YapDatabaseSerializer)timestampSerializer
 {
-	return ^ NSData* (NSString __unused *collection, NSString __unused *key, id object) {
-		
-		if ([object isKindOfClass:[NSDate class]])
-		{
-			NSTimeInterval timestamp = [(NSDate *)object timeIntervalSinceReferenceDate];
-			
-			return [[NSData alloc] initWithBytes:(void *)&timestamp length:sizeof(NSTimeInterval)];
-		}
-		else
-		{
-			return [NSKeyedArchiver archivedDataWithRootObject:object];
-		}
-	};
+    return ^ NSData* (NSString __unused *collection, NSString __unused *key, id object) {
+        
+        if ([object isKindOfClass:[NSDate class]])
+        {
+            NSTimeInterval timestamp = [(NSDate *)object timeIntervalSinceReferenceDate];
+            
+            return [[NSData alloc] initWithBytes:(void *)&timestamp length:sizeof(NSTimeInterval)];
+        }
+        else
+        {
+            return [NSKeyedArchiver archivedDataWithRootObject:object];
+        }
+    };
 }
 
 /**
  * A FASTER deserializer than the default, if deserializing data from timestampSerializer.
  * You may want to use timestampSerializer & timestampDeserializer if your metadata is simply an NSDate.
-**/
+ **/
 + (YapDatabaseDeserializer)timestampDeserializer
 {
-	return ^ id (NSString __unused *collection, NSString __unused *key, NSData *data) {
-		
-		if ([data length] == sizeof(NSTimeInterval))
-		{
-			NSTimeInterval timestamp;
-			memcpy((void *)&timestamp, [data bytes], sizeof(NSTimeInterval));
-			
-			return [[NSDate alloc] initWithTimeIntervalSinceReferenceDate:timestamp];
-		}
-		else
-		{
-			return [NSKeyedUnarchiver unarchiveObjectWithData:data];
-		}
-	};
+    return ^ id (NSString __unused *collection, NSString __unused *key, NSData *data) {
+        
+        if ([data length] == sizeof(NSTimeInterval))
+        {
+            NSTimeInterval timestamp;
+            memcpy((void *)&timestamp, [data bytes], sizeof(NSTimeInterval));
+            
+            return [[NSDate alloc] initWithTimeIntervalSinceReferenceDate:timestamp];
+        }
+        else
+        {
+            return [NSKeyedUnarchiver unarchiveObjectWithData:data];
+        }
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -225,28 +234,28 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 - (NSString *)databasePath_wal
 {
-	return [databasePath stringByAppendingString:@"-wal"];
+    return [databasePath stringByAppendingString:@"-wal"];
 }
 
 - (NSString *)databasePath_shm
 {
-	return [databasePath stringByAppendingString:@"-shm"];
+    return [databasePath stringByAppendingString:@"-shm"];
 }
 
 - (YapDatabaseOptions *)options
 {
-	return [options copy];
+    return [options copy];
 }
 
 - (NSString *)sqliteVersion
 {
-	__block NSString *result = nil;
-	
-	dispatch_sync(snapshotQueue, ^{
-		result = sqliteVersion;
-	});
-	
-	return result;
+    __block NSString *result = nil;
+    
+    dispatch_sync(snapshotQueue, ^{
+        result = sqliteVersion;
+    });
+    
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,32 +264,32 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 - (id)initWithPath:(NSString *)inPath
 {
-	return [self initWithPath:inPath
-	         objectSerializer:NULL
-	       objectDeserializer:NULL
-	       metadataSerializer:NULL
-	     metadataDeserializer:NULL
-	       objectPreSanitizer:NULL
-	      objectPostSanitizer:NULL
-	     metadataPreSanitizer:NULL
-	    metadataPostSanitizer:NULL
-	                  options:nil];
+    return [self initWithPath:inPath
+             objectSerializer:NULL
+           objectDeserializer:NULL
+           metadataSerializer:NULL
+         metadataDeserializer:NULL
+           objectPreSanitizer:NULL
+          objectPostSanitizer:NULL
+         metadataPreSanitizer:NULL
+        metadataPostSanitizer:NULL
+                      options:nil];
 }
 
 - (id)initWithPath:(NSString *)inPath
         serializer:(YapDatabaseSerializer)inSerializer
       deserializer:(YapDatabaseDeserializer)inDeserializer
 {
-	return [self initWithPath:inPath
-	         objectSerializer:inSerializer
-	       objectDeserializer:inDeserializer
-	       metadataSerializer:inSerializer
-	     metadataDeserializer:inDeserializer
-	        objectPreSanitizer:NULL
-	       objectPostSanitizer:NULL
-	      metadataPreSanitizer:NULL
-	     metadataPostSanitizer:NULL
-	                   options:nil];
+    return [self initWithPath:inPath
+             objectSerializer:inSerializer
+           objectDeserializer:inDeserializer
+           metadataSerializer:inSerializer
+         metadataDeserializer:inDeserializer
+           objectPreSanitizer:NULL
+          objectPostSanitizer:NULL
+         metadataPreSanitizer:NULL
+        metadataPostSanitizer:NULL
+                      options:nil];
 }
 
 - (id)initWithPath:(NSString *)inPath
@@ -288,16 +297,16 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
       deserializer:(YapDatabaseDeserializer)inDeserializer
            options:(YapDatabaseOptions *)inOptions
 {
-	return [self initWithPath:inPath
-	         objectSerializer:inSerializer
-	       objectDeserializer:inDeserializer
-	       metadataSerializer:inSerializer
-	     metadataDeserializer:inDeserializer
-	        objectPreSanitizer:NULL
-	       objectPostSanitizer:NULL
-	      metadataPreSanitizer:NULL
-	     metadataPostSanitizer:NULL
-	                  options:inOptions];
+    return [self initWithPath:inPath
+             objectSerializer:inSerializer
+           objectDeserializer:inDeserializer
+           metadataSerializer:inSerializer
+         metadataDeserializer:inDeserializer
+           objectPreSanitizer:NULL
+          objectPostSanitizer:NULL
+         metadataPreSanitizer:NULL
+        metadataPostSanitizer:NULL
+                      options:inOptions];
 }
 
 - (id)initWithPath:(NSString *)inPath
@@ -307,304 +316,304 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
      postSanitizer:(YapDatabasePostSanitizer)inPostSanitizer
            options:(YapDatabaseOptions *)inOptions
 {
-	return [self initWithPath:inPath
-	         objectSerializer:inSerializer
-	       objectDeserializer:inDeserializer
-	       metadataSerializer:inSerializer
-	     metadataDeserializer:inDeserializer
-	        objectPreSanitizer:inPreSanitizer
-	       objectPostSanitizer:inPostSanitizer
-	      metadataPreSanitizer:inPreSanitizer
-	     metadataPostSanitizer:inPostSanitizer
-	                  options:inOptions];
+    return [self initWithPath:inPath
+             objectSerializer:inSerializer
+           objectDeserializer:inDeserializer
+           metadataSerializer:inSerializer
+         metadataDeserializer:inDeserializer
+           objectPreSanitizer:inPreSanitizer
+          objectPostSanitizer:inPostSanitizer
+         metadataPreSanitizer:inPreSanitizer
+        metadataPostSanitizer:inPostSanitizer
+                      options:inOptions];
 }
 
 - (id)initWithPath:(NSString *)inPath objectSerializer:(YapDatabaseSerializer)inObjectSerializer
-                                    objectDeserializer:(YapDatabaseDeserializer)inObjectDeserializer
-                                    metadataSerializer:(YapDatabaseSerializer)inMetadataSerializer
-                                  metadataDeserializer:(YapDatabaseDeserializer)inMetadataDeserializer
+objectDeserializer:(YapDatabaseDeserializer)inObjectDeserializer
+metadataSerializer:(YapDatabaseSerializer)inMetadataSerializer
+metadataDeserializer:(YapDatabaseDeserializer)inMetadataDeserializer
 {
-	return [self initWithPath:inPath
-	         objectSerializer:inObjectSerializer
-	       objectDeserializer:inObjectDeserializer
-	       metadataSerializer:inMetadataSerializer
-	     metadataDeserializer:inMetadataDeserializer
-	       objectPreSanitizer:NULL
-	      objectPostSanitizer:NULL
-	     metadataPreSanitizer:NULL
-	    metadataPostSanitizer:NULL
-	                  options:nil];
+    return [self initWithPath:inPath
+             objectSerializer:inObjectSerializer
+           objectDeserializer:inObjectDeserializer
+           metadataSerializer:inMetadataSerializer
+         metadataDeserializer:inMetadataDeserializer
+           objectPreSanitizer:NULL
+          objectPostSanitizer:NULL
+         metadataPreSanitizer:NULL
+        metadataPostSanitizer:NULL
+                      options:nil];
 }
 
 - (id)initWithPath:(NSString *)inPath objectSerializer:(YapDatabaseSerializer)inObjectSerializer
-                                    objectDeserializer:(YapDatabaseDeserializer)inObjectDeserializer
-                                    metadataSerializer:(YapDatabaseSerializer)inMetadataSerializer
-                                  metadataDeserializer:(YapDatabaseDeserializer)inMetadataDeserializer
-                                               options:(YapDatabaseOptions *)inOptions
+objectDeserializer:(YapDatabaseDeserializer)inObjectDeserializer
+metadataSerializer:(YapDatabaseSerializer)inMetadataSerializer
+metadataDeserializer:(YapDatabaseDeserializer)inMetadataDeserializer
+           options:(YapDatabaseOptions *)inOptions
 {
-	return [self initWithPath:inPath
-	         objectSerializer:inObjectSerializer
-	       objectDeserializer:inObjectDeserializer
-	       metadataSerializer:inMetadataSerializer
-	     metadataDeserializer:inMetadataDeserializer
-	       objectPreSanitizer:NULL
-	      objectPostSanitizer:NULL
-	     metadataPreSanitizer:NULL
-	    metadataPostSanitizer:NULL
-	                  options:inOptions];
+    return [self initWithPath:inPath
+             objectSerializer:inObjectSerializer
+           objectDeserializer:inObjectDeserializer
+           metadataSerializer:inMetadataSerializer
+         metadataDeserializer:inMetadataDeserializer
+           objectPreSanitizer:NULL
+          objectPostSanitizer:NULL
+         metadataPreSanitizer:NULL
+        metadataPostSanitizer:NULL
+                      options:inOptions];
 }
 
 - (id)initWithPath:(NSString *)inPath objectSerializer:(YapDatabaseSerializer)inObjectSerializer
-                                    objectDeserializer:(YapDatabaseDeserializer)inObjectDeserializer
-                                    metadataSerializer:(YapDatabaseSerializer)inMetadataSerializer
-                                  metadataDeserializer:(YapDatabaseDeserializer)inMetadataDeserializer
-                                    objectPreSanitizer:(YapDatabasePreSanitizer)inObjectPreSanitizer
-                                   objectPostSanitizer:(YapDatabasePostSanitizer)inObjectPostSanitizer
-                                  metadataPreSanitizer:(YapDatabasePreSanitizer)inMetadataPreSanitizer
-                                 metadataPostSanitizer:(YapDatabasePostSanitizer)inMetadataPostSanitizer
-                                               options:(YapDatabaseOptions *)inOptions
+objectDeserializer:(YapDatabaseDeserializer)inObjectDeserializer
+metadataSerializer:(YapDatabaseSerializer)inMetadataSerializer
+metadataDeserializer:(YapDatabaseDeserializer)inMetadataDeserializer
+objectPreSanitizer:(YapDatabasePreSanitizer)inObjectPreSanitizer
+objectPostSanitizer:(YapDatabasePostSanitizer)inObjectPostSanitizer
+metadataPreSanitizer:(YapDatabasePreSanitizer)inMetadataPreSanitizer
+metadataPostSanitizer:(YapDatabasePostSanitizer)inMetadataPostSanitizer
+           options:(YapDatabaseOptions *)inOptions
 {
-	// First, standardize path.
-	// This allows clients to be lazy when passing paths.
-	NSString *path = [inPath stringByStandardizingPath];
-	
-	// Ensure there is only a single database instance per file.
-	// However, clients may create as many connections as desired.
-	if (![YapDatabaseManager registerDatabaseForPath:path])
-	{
-		YDBLogError(@"Only a single database instance is allowed per file. "
-		            @"For concurrency you create multiple connections from a single database instance.");
-		return nil;
-	}
-	
-	if ((self = [super init]))
-	{
-		databasePath = path;
-		options = inOptions ? [inOptions copy] : [[YapDatabaseOptions alloc] init];
-		
-		__block BOOL isNewDatabaseFile = ![[NSFileManager defaultManager] fileExistsAtPath:databasePath];
-		
-		BOOL(^openConfigCreate)(void) = ^BOOL (void) { @autoreleasepool {
-		
-			BOOL result = YES;
-			
-			if (result) result = [self openDatabase];
+    // First, standardize path.
+    // This allows clients to be lazy when passing paths.
+    NSString *path = [inPath stringByStandardizingPath];
+    
+    // Ensure there is only a single database instance per file.
+    // However, clients may create as many connections as desired.
+    if (![YapDatabaseManager registerDatabaseForPath:path])
+    {
+        YDBLogError(@"Only a single database instance is allowed per file. "
+                    @"For concurrency you create multiple connections from a single database instance.");
+        return nil;
+    }
+    
+    if ((self = [super init]))
+    {
+        databasePath = path;
+        options = inOptions ? [inOptions copy] : [[YapDatabaseOptions alloc] init];
+        
+        __block BOOL isNewDatabaseFile = ![[NSFileManager defaultManager] fileExistsAtPath:databasePath];
+        
+        BOOL(^openConfigCreate)(void) = ^BOOL (void) { @autoreleasepool {
+            
+            BOOL result = YES;
+            
+            if (result) result = [self openDatabase];
 #ifdef SQLITE_HAS_CODEC
             if (result) result = [self configureEncryptionForDatabase:db];
 #endif
-			if (result) result = [self configureDatabase:isNewDatabaseFile];
-			if (result) result = [self createTables];
-			
-			if (!result && db)
-			{
-				sqlite3_close(db);
-				db = NULL;
-			}
-			
-			return result;
-		}};
-		
-		BOOL result = openConfigCreate();
-		if (!result)
-		{
-			// There are a few reasons why the database might not open.
-			// One possibility is if the database file has become corrupt.
-			
-			if (options.corruptAction == YapDatabaseCorruptAction_Fail)
-			{
-				// Fail - do not try to resolve
-			}
-			else if (options.corruptAction == YapDatabaseCorruptAction_Rename)
-			{
-				// Try to rename the corrupt database file.
-				
-				BOOL renamed = NO;
-				BOOL failed = NO;
-				
-				NSString *newDatabasePath = nil;
-				int i = 0;
-				
-				do
-				{
-					NSString *extension = [NSString stringWithFormat:@"%d.corrupt", i];
-					newDatabasePath = [databasePath stringByAppendingPathExtension:extension];
-					
-					if ([[NSFileManager defaultManager] fileExistsAtPath:newDatabasePath])
-					{
-						i++;
-					}
-					else
-					{
-						NSError *error = nil;
-						renamed = [[NSFileManager defaultManager] moveItemAtPath:databasePath
-						                                                  toPath:newDatabasePath
-						                                                   error:&error];
-						if (!renamed)
-						{
-							failed = YES;
-							YDBLogError(@"Error renaming corrupt database file: (%@ -> %@) %@",
-							            [databasePath lastPathComponent], [newDatabasePath lastPathComponent], error);
-						}
-					}
-					
-				} while (i < INT_MAX && !renamed && !failed);
-				
-				if (renamed)
-				{
-					isNewDatabaseFile = YES;
-					result = openConfigCreate();
-					if (result) {
-						YDBLogInfo(@"Database corruption resolved. Renamed corrupt file. (newDB=%@) (corruptDB=%@)",
-						           [databasePath lastPathComponent], [newDatabasePath lastPathComponent]);
-					}
-					else {
-						YDBLogError(@"Database corruption unresolved. (name=%@)", [databasePath lastPathComponent]);
-					}
-				}
-				
-			}
-			else // if (options.corruptAction == YapDatabaseCorruptAction_Delete)
-			{
-				// Try to delete the corrupt database file.
-				
-				NSError *error = nil;
-				BOOL deleted = [[NSFileManager defaultManager] removeItemAtPath:path error:&error];
-				
-				if (deleted)
-				{
-					isNewDatabaseFile = YES;
-					result = openConfigCreate();
-					if (result) {
-						YDBLogInfo(@"Database corruption resolved. Deleted corrupt file. (name=%@)",
-						                                                          [databasePath lastPathComponent]);
-					}
-					else {
-						YDBLogError(@"Database corruption unresolved. (name=%@)", [databasePath lastPathComponent]);
-					}
-				}
-				else
-				{
-					YDBLogError(@"Error deleting corrupt database file: %@", error);
-				}
-			}
-		}
-		if (!result)
-		{
-			return nil;
-		}
-		
-		internalQueue   = dispatch_queue_create("YapDatabase-Internal", NULL);
-		checkpointQueue = dispatch_queue_create("YapDatabase-Checkpoint", NULL);
-		snapshotQueue   = dispatch_queue_create("YapDatabase-Snapshot", NULL);
-		writeQueue      = dispatch_queue_create("YapDatabase-Write", NULL);
-		
-		changesets = [[NSMutableArray alloc] init];
-		connectionStates = [[NSMutableArray alloc] init];
-		
-		connectionDefaults = [[YapDatabaseConnectionDefaults alloc] init];
-		
-		registeredExtensions = [[NSDictionary alloc] init];
-		registeredMemoryTables = [[NSDictionary alloc] init];
-		
-		extensionDependencies = [[NSDictionary alloc] init];
-		extensionsOrder = [[NSArray alloc] init];
-		
-		maxConnectionPoolCount = DEFAULT_MAX_CONNECTION_POOL_COUNT;
-		connectionPoolLifetime = DEFAULT_CONNECTION_POOL_LIFETIME;
-		
-		YapDatabaseSerializer defaultSerializer     = nil;
-		YapDatabaseDeserializer defaultDeserializer = nil;
-		
-		if (!inObjectSerializer || !inMetadataSerializer)
-			defaultSerializer = [[self class] defaultSerializer];
-		
-		if (!inObjectDeserializer || !inMetadataDeserializer)
-			defaultDeserializer = [[self class] defaultDeserializer];
-		
-		objectSerializer = inObjectSerializer ? inObjectSerializer : defaultSerializer;
-		objectDeserializer = inObjectDeserializer ? inObjectDeserializer : defaultDeserializer;
-		
-		metadataSerializer = inMetadataSerializer ? inMetadataSerializer : defaultSerializer;
-		metadataDeserializer = inMetadataDeserializer ? inMetadataDeserializer : defaultDeserializer;
-		
-		objectPreSanitizer = inObjectPreSanitizer;
-		objectPostSanitizer = inObjectPostSanitizer;
-		
-		metadataPreSanitizer = inMetadataPreSanitizer;
-		metadataPostSanitizer = inMetadataPostSanitizer;
-		
-		// Mark the queues so we can identify them.
-		// There are several methods whose use is restricted to within a certain queue.
-		
-		IsOnSnapshotQueueKey = &IsOnSnapshotQueueKey;
-		dispatch_queue_set_specific(snapshotQueue, IsOnSnapshotQueueKey, IsOnSnapshotQueueKey, NULL);
-		
-		IsOnWriteQueueKey = &IsOnWriteQueueKey;
-		dispatch_queue_set_specific(writeQueue, IsOnWriteQueueKey, IsOnWriteQueueKey, NULL);
-		
-		// Complete database setup in the background
-		dispatch_async(snapshotQueue, ^{ @autoreleasepool {
-	
-			[self upgradeTable];
-			[self prepare];
-		}});
-	}
-	return self;
+            if (result) result = [self configureDatabase:isNewDatabaseFile];
+            if (result) result = [self createTables];
+            
+            if (!result && db)
+            {
+                sqlite3_close(db);
+                db = NULL;
+            }
+            
+            return result;
+        }};
+        
+        BOOL result = openConfigCreate();
+        if (!result)
+        {
+            // There are a few reasons why the database might not open.
+            // One possibility is if the database file has become corrupt.
+            
+            if (options.corruptAction == YapDatabaseCorruptAction_Fail)
+            {
+                // Fail - do not try to resolve
+            }
+            else if (options.corruptAction == YapDatabaseCorruptAction_Rename)
+            {
+                // Try to rename the corrupt database file.
+                
+                BOOL renamed = NO;
+                BOOL failed = NO;
+                
+                NSString *newDatabasePath = nil;
+                int i = 0;
+                
+                do
+                {
+                    NSString *extension = [NSString stringWithFormat:@"%d.corrupt", i];
+                    newDatabasePath = [databasePath stringByAppendingPathExtension:extension];
+                    
+                    if ([[NSFileManager defaultManager] fileExistsAtPath:newDatabasePath])
+                    {
+                        i++;
+                    }
+                    else
+                    {
+                        NSError *error = nil;
+                        renamed = [[NSFileManager defaultManager] moveItemAtPath:databasePath
+                                                                          toPath:newDatabasePath
+                                                                           error:&error];
+                        if (!renamed)
+                        {
+                            failed = YES;
+                            YDBLogError(@"Error renaming corrupt database file: (%@ -> %@) %@",
+                                        [databasePath lastPathComponent], [newDatabasePath lastPathComponent], error);
+                        }
+                    }
+                    
+                } while (i < INT_MAX && !renamed && !failed);
+                
+                if (renamed)
+                {
+                    isNewDatabaseFile = YES;
+                    result = openConfigCreate();
+                    if (result) {
+                        YDBLogInfo(@"Database corruption resolved. Renamed corrupt file. (newDB=%@) (corruptDB=%@)",
+                                   [databasePath lastPathComponent], [newDatabasePath lastPathComponent]);
+                    }
+                    else {
+                        YDBLogError(@"Database corruption unresolved. (name=%@)", [databasePath lastPathComponent]);
+                    }
+                }
+                
+            }
+            else // if (options.corruptAction == YapDatabaseCorruptAction_Delete)
+            {
+                // Try to delete the corrupt database file.
+                
+                NSError *error = nil;
+                BOOL deleted = [[NSFileManager defaultManager] removeItemAtPath:path error:&error];
+                
+                if (deleted)
+                {
+                    isNewDatabaseFile = YES;
+                    result = openConfigCreate();
+                    if (result) {
+                        YDBLogInfo(@"Database corruption resolved. Deleted corrupt file. (name=%@)",
+                                   [databasePath lastPathComponent]);
+                    }
+                    else {
+                        YDBLogError(@"Database corruption unresolved. (name=%@)", [databasePath lastPathComponent]);
+                    }
+                }
+                else
+                {
+                    YDBLogError(@"Error deleting corrupt database file: %@", error);
+                }
+            }
+        }
+        if (!result)
+        {
+            return nil;
+        }
+        
+        internalQueue   = dispatch_queue_create("YapDatabase-Internal", NULL);
+        checkpointQueue = dispatch_queue_create("YapDatabase-Checkpoint", NULL);
+        snapshotQueue   = dispatch_queue_create("YapDatabase-Snapshot", NULL);
+        writeQueue      = dispatch_queue_create("YapDatabase-Write", NULL);
+        
+        changesets = [[NSMutableArray alloc] init];
+        connectionStates = [[NSMutableArray alloc] init];
+        
+        connectionDefaults = [[YapDatabaseConnectionDefaults alloc] init];
+        
+        registeredExtensions = [[NSDictionary alloc] init];
+        registeredMemoryTables = [[NSDictionary alloc] init];
+        
+        extensionDependencies = [[NSDictionary alloc] init];
+        extensionsOrder = [[NSArray alloc] init];
+        
+        maxConnectionPoolCount = DEFAULT_MAX_CONNECTION_POOL_COUNT;
+        connectionPoolLifetime = DEFAULT_CONNECTION_POOL_LIFETIME;
+        
+        YapDatabaseSerializer defaultSerializer     = nil;
+        YapDatabaseDeserializer defaultDeserializer = nil;
+        
+        if (!inObjectSerializer || !inMetadataSerializer)
+            defaultSerializer = [[self class] defaultSerializer];
+        
+        if (!inObjectDeserializer || !inMetadataDeserializer)
+            defaultDeserializer = [[self class] defaultDeserializer];
+        
+        objectSerializer = inObjectSerializer ? inObjectSerializer : defaultSerializer;
+        objectDeserializer = inObjectDeserializer ? inObjectDeserializer : defaultDeserializer;
+        
+        metadataSerializer = inMetadataSerializer ? inMetadataSerializer : defaultSerializer;
+        metadataDeserializer = inMetadataDeserializer ? inMetadataDeserializer : defaultDeserializer;
+        
+        objectPreSanitizer = inObjectPreSanitizer;
+        objectPostSanitizer = inObjectPostSanitizer;
+        
+        metadataPreSanitizer = inMetadataPreSanitizer;
+        metadataPostSanitizer = inMetadataPostSanitizer;
+        
+        // Mark the queues so we can identify them.
+        // There are several methods whose use is restricted to within a certain queue.
+        
+        IsOnSnapshotQueueKey = &IsOnSnapshotQueueKey;
+        dispatch_queue_set_specific(snapshotQueue, IsOnSnapshotQueueKey, IsOnSnapshotQueueKey, NULL);
+        
+        IsOnWriteQueueKey = &IsOnWriteQueueKey;
+        dispatch_queue_set_specific(writeQueue, IsOnWriteQueueKey, IsOnWriteQueueKey, NULL);
+        
+        // Complete database setup in the background
+        dispatch_async(snapshotQueue, ^{ @autoreleasepool {
+            
+            [self upgradeTable];
+            [self prepare];
+        }});
+    }
+    return self;
 }
 
 - (void)dealloc
 {
-	YDBLogVerbose(@"Dealloc <%@ %p: databaseName=%@>", [self class], self, [databasePath lastPathComponent]);
-	
-	NSDictionary *userInfo = @{
-		YapDatabasePathKey    : self.databasePath     ?: @"",
-		YapDatabasePathWalKey : self.databasePath_wal ?: @"",
-		YapDatabasePathShmKey : self.databasePath_shm ?: @""
-	};
-	NSNotification *notification =
-	  [NSNotification notificationWithName:YapDatabaseClosedNotification
-	                                object:nil // Cannot retain self within dealloc method
-	                              userInfo:userInfo];
-	
-	while ([connectionPoolValues count] > 0)
-	{
-		sqlite3 *aDb = (sqlite3 *)[[connectionPoolValues objectAtIndex:0] pointerValue];
-		
-		int status = sqlite3_close(aDb);
-		if (status != SQLITE_OK)
-		{
-			YDBLogError(@"Error in sqlite_close: %d %s", status, sqlite3_errmsg(aDb));
-		}
-		
-		[connectionPoolValues removeObjectAtIndex:0];
-		[connectionPoolDates removeObjectAtIndex:0];
-	}
-	
-	if (connectionPoolTimer)
-		dispatch_source_cancel(connectionPoolTimer);
-	
-	if (db) {
-		sqlite3_close(db);
-		db = NULL;
-	}
-	
-	[YapDatabaseManager deregisterDatabaseForPath:databasePath];
-	
+    YDBLogVerbose(@"Dealloc <%@ %p: databaseName=%@>", [self class], self, [databasePath lastPathComponent]);
+    
+    NSDictionary *userInfo = @{
+        YapDatabasePathKey    : self.databasePath     ?: @"",
+        YapDatabasePathWalKey : self.databasePath_wal ?: @"",
+        YapDatabasePathShmKey : self.databasePath_shm ?: @""
+    };
+    NSNotification *notification =
+    [NSNotification notificationWithName:YapDatabaseClosedNotification
+                                  object:nil // Cannot retain self within dealloc method
+                                userInfo:userInfo];
+    
+    while ([connectionPoolValues count] > 0)
+    {
+        sqlite3 *aDb = (sqlite3 *)[[connectionPoolValues objectAtIndex:0] pointerValue];
+        
+        int status = sqlite3_close(aDb);
+        if (status != SQLITE_OK)
+        {
+            YDBLogError(@"Error in sqlite_close: %d %s", status, sqlite3_errmsg(aDb));
+        }
+        
+        [connectionPoolValues removeObjectAtIndex:0];
+        [connectionPoolDates removeObjectAtIndex:0];
+    }
+    
+    if (connectionPoolTimer)
+        dispatch_source_cancel(connectionPoolTimer);
+    
+    if (db) {
+        sqlite3_close(db);
+        db = NULL;
+    }
+    
+    [YapDatabaseManager deregisterDatabaseForPath:databasePath];
+    
 #if !OS_OBJECT_USE_OBJC
-	if (internalQueue)
-		dispatch_release(internalQueue);
-	if (snapshotQueue)
-		dispatch_release(snapshotQueue);
-	if (writeQueue)
-		dispatch_release(writeQueue);
-	if (checkpointQueue)
-		dispatch_release(checkpointQueue);
+    if (internalQueue)
+        dispatch_release(internalQueue);
+    if (snapshotQueue)
+        dispatch_release(snapshotQueue);
+    if (writeQueue)
+        dispatch_release(writeQueue);
+    if (checkpointQueue)
+        dispatch_release(checkpointQueue);
 #endif
-	
-	dispatch_async(dispatch_get_main_queue(), ^{
-		
-		[[NSNotificationCenter defaultCenter] postNotification:notification];
-	});
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        
+        [[NSNotificationCenter defaultCenter] postNotification:notification];
+    });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -613,220 +622,220 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 /**
  * Attempts to open (or create & open) the database connection.
-**/
+ **/
 - (BOOL)openDatabase
 {
-	// Open the database connection.
-	//
-	// We use SQLITE_OPEN_NOMUTEX to use the multi-thread threading mode,
-	// as we will be serializing access to the connection externally.
-	
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_PRIVATECACHE;
-	
-	int status = sqlite3_open_v2([databasePath UTF8String], &db, flags, NULL);
-	if (status != SQLITE_OK)
-	{
-		// There are a few reasons why the database might not open.
-		// One possibility is if the database file has become corrupt.
-		
-		// Sometimes the open function returns a db to allow us to query it for the error message.
-		// The openConfigCreate block will close it for us.
-		if (db) {
-			YDBLogError(@"Error opening database: %d %s", status, sqlite3_errmsg(db));
-		}
-		else {
-			YDBLogError(@"Error opening database: %d", status);
-		}
-		
-		return NO;
-	}
-	
-	return YES;
+    // Open the database connection.
+    //
+    // We use SQLITE_OPEN_NOMUTEX to use the multi-thread threading mode,
+    // as we will be serializing access to the connection externally.
+    
+    int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_PRIVATECACHE;
+    
+    int status = sqlite3_open_v2([databasePath UTF8String], &db, flags, NULL);
+    if (status != SQLITE_OK)
+    {
+        // There are a few reasons why the database might not open.
+        // One possibility is if the database file has become corrupt.
+        
+        // Sometimes the open function returns a db to allow us to query it for the error message.
+        // The openConfigCreate block will close it for us.
+        if (db) {
+            YDBLogError(@"Error opening database: %d %s", status, sqlite3_errmsg(db));
+        }
+        else {
+            YDBLogError(@"Error opening database: %d", status);
+        }
+        
+        return NO;
+    }
+    
+    return YES;
 }
 
 /**
  * Configures the database connection.
  * This mainly means enabling WAL mode, and configuring the auto-checkpoint.
-**/
+ **/
 - (BOOL)configureDatabase:(BOOL)isNewDatabaseFile
 {
-	int status;
-	
-	// Set mandatory pragmas
-	
-	if (isNewDatabaseFile && (options.pragmaPageSize > 0))
-	{
-		NSString *pragma_page_size =
-		  [NSString stringWithFormat:@"PRAGMA page_size = %ld;", (long)options.pragmaPageSize];
-		
-		status = sqlite3_exec(db, [pragma_page_size UTF8String], NULL, NULL, NULL);
-		if (status != SQLITE_OK)
-		{
-			YDBLogError(@"Error setting PRAGMA page_size: %d %s", status, sqlite3_errmsg(db));
-		}
-	}
-	
-	status = sqlite3_exec(db, "PRAGMA journal_mode = WAL;", NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error setting PRAGMA journal_mode: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	if (isNewDatabaseFile)
-	{
-		status = sqlite3_exec(db, "PRAGMA auto_vacuum = FULL; VACUUM;", NULL, NULL, NULL);
-		if (status != SQLITE_OK)
-		{
-			YDBLogError(@"Error setting PRAGMA auto_vacuum: %d %s", status, sqlite3_errmsg(db));
-		}
-	}
-	
-	// Set synchronous to normal for THIS sqlite instance.
-	//
-	// This does NOT affect normal connections.
-	// That is, this does NOT affect YapDatabaseConnection instances.
-	// The sqlite connections of normal YapDatabaseConnection instances will follow the set pragmaSynchronous value.
-	//
-	// The reason we hardcode normal for this sqlite instance is because
-	// it's only used to write the initial snapshot value.
-	// And this doesn't need to be durable, as it is initialized to zero everytime.
-	//
-	// (This sqlite db is also used to perform checkpoints.
-	//  But a normal value won't affect these operations,
-	//  as they will perform sync operations whether the connection is normal or full.)
-	
-	status = sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error setting PRAGMA synchronous: %d %s", status, sqlite3_errmsg(db));
-		// This isn't critical, so we can continue.
-	}
-	
-	// Set journal_size_imit.
-	//
-	// We only need to do set this pragma for THIS connection,
-	// because it is the only connection that performs checkpoints.
-	
-	NSString *pragma_journal_size_limit =
-	  [NSString stringWithFormat:@"PRAGMA journal_size_limit = %ld;", (long)options.pragmaJournalSizeLimit];
-	
-	status = sqlite3_exec(db, [pragma_journal_size_limit UTF8String], NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error setting PRAGMA journal_size_limit: %d %s", status, sqlite3_errmsg(db));
-		// This isn't critical, so we can continue.
-	}
-	
-	// Set mmap_size (if needed).
-	//
-	// This configures memory mapped I/O.
-	
-	if (options.pragmaMMapSize > 0)
-	{
-		NSString *pragma_mmap_size =
-		  [NSString stringWithFormat:@"PRAGMA mmap_size = %ld;", (long)options.pragmaMMapSize];
-		
-		status = sqlite3_exec(db, [pragma_mmap_size UTF8String], NULL, NULL, NULL);
-		if (status != SQLITE_OK)
-		{
-			YDBLogError(@"Error setting PRAGMA mmap_size: %d %s", status, sqlite3_errmsg(db));
-			// This isn't critical, so we can continue.
-		}
-	}
-	
-	// Disable autocheckpointing.
-	//
-	// YapDatabase has its own optimized checkpointing algorithm built-in.
-	// It knows the state of every active connection for the database,
-	// so it can invoke the checkpoint methods at the precise time in which a checkpoint can be most effective.
-	
-	sqlite3_wal_autocheckpoint(db, 0);
-	
-	return YES;
+    int status;
+    
+    // Set mandatory pragmas
+    
+    if (isNewDatabaseFile && (options.pragmaPageSize > 0))
+    {
+        NSString *pragma_page_size =
+        [NSString stringWithFormat:@"PRAGMA page_size = %ld;", (long)options.pragmaPageSize];
+        
+        status = sqlite3_exec(db, [pragma_page_size UTF8String], NULL, NULL, NULL);
+        if (status != SQLITE_OK)
+        {
+            YDBLogError(@"Error setting PRAGMA page_size: %d %s", status, sqlite3_errmsg(db));
+        }
+    }
+    
+    status = sqlite3_exec(db, "PRAGMA journal_mode = WAL;", NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error setting PRAGMA journal_mode: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    if (isNewDatabaseFile)
+    {
+        status = sqlite3_exec(db, "PRAGMA auto_vacuum = FULL; VACUUM;", NULL, NULL, NULL);
+        if (status != SQLITE_OK)
+        {
+            YDBLogError(@"Error setting PRAGMA auto_vacuum: %d %s", status, sqlite3_errmsg(db));
+        }
+    }
+    
+    // Set synchronous to normal for THIS sqlite instance.
+    //
+    // This does NOT affect normal connections.
+    // That is, this does NOT affect YapDatabaseConnection instances.
+    // The sqlite connections of normal YapDatabaseConnection instances will follow the set pragmaSynchronous value.
+    //
+    // The reason we hardcode normal for this sqlite instance is because
+    // it's only used to write the initial snapshot value.
+    // And this doesn't need to be durable, as it is initialized to zero everytime.
+    //
+    // (This sqlite db is also used to perform checkpoints.
+    //  But a normal value won't affect these operations,
+    //  as they will perform sync operations whether the connection is normal or full.)
+    
+    status = sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error setting PRAGMA synchronous: %d %s", status, sqlite3_errmsg(db));
+        // This isn't critical, so we can continue.
+    }
+    
+    // Set journal_size_imit.
+    //
+    // We only need to do set this pragma for THIS connection,
+    // because it is the only connection that performs checkpoints.
+    
+    NSString *pragma_journal_size_limit =
+    [NSString stringWithFormat:@"PRAGMA journal_size_limit = %ld;", (long)options.pragmaJournalSizeLimit];
+    
+    status = sqlite3_exec(db, [pragma_journal_size_limit UTF8String], NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error setting PRAGMA journal_size_limit: %d %s", status, sqlite3_errmsg(db));
+        // This isn't critical, so we can continue.
+    }
+    
+    // Set mmap_size (if needed).
+    //
+    // This configures memory mapped I/O.
+    
+    if (options.pragmaMMapSize > 0)
+    {
+        NSString *pragma_mmap_size =
+        [NSString stringWithFormat:@"PRAGMA mmap_size = %ld;", (long)options.pragmaMMapSize];
+        
+        status = sqlite3_exec(db, [pragma_mmap_size UTF8String], NULL, NULL, NULL);
+        if (status != SQLITE_OK)
+        {
+            YDBLogError(@"Error setting PRAGMA mmap_size: %d %s", status, sqlite3_errmsg(db));
+            // This isn't critical, so we can continue.
+        }
+    }
+    
+    // Disable autocheckpointing.
+    //
+    // YapDatabase has its own optimized checkpointing algorithm built-in.
+    // It knows the state of every active connection for the database,
+    // so it can invoke the checkpoint methods at the precise time in which a checkpoint can be most effective.
+    
+    sqlite3_wal_autocheckpoint(db, 0);
+    
+    return YES;
 }
 
 
 #ifdef SQLITE_HAS_CODEC
 /**
  * Configures database encryption via SQLCipher.
-**/
+ **/
 - (BOOL)configureEncryptionForDatabase:(sqlite3 *)sqlite
 {
     if (options.cipherKeyBlock)
-	{
-		NSData *keyData = options.cipherKeyBlock();
-		
-		if (keyData == nil)
-		{
-			NSAssert(NO, @"YapDatabaseOptions.cipherKeyBlock cannot return nil!");
-			return NO;
-		}
-		
-		int status = sqlite3_key(sqlite, [keyData bytes], (int)[keyData length]);
-		if (status != SQLITE_OK)
-		{
-			YDBLogError(@"Error setting SQLCipher key: %d %s", status, sqlite3_errmsg(sqlite));
-			return NO;
-		}
-	}
-	
-	return YES;
+    {
+        NSData *keyData = options.cipherKeyBlock();
+        
+        if (keyData == nil)
+        {
+            NSAssert(NO, @"YapDatabaseOptions.cipherKeyBlock cannot return nil!");
+            return NO;
+        }
+        
+        int status = sqlite3_key(sqlite, [keyData bytes], (int)[keyData length]);
+        if (status != SQLITE_OK)
+        {
+            YDBLogError(@"Error setting SQLCipher key: %d %s", status, sqlite3_errmsg(sqlite));
+            return NO;
+        }
+    }
+    
+    return YES;
 }
 #endif
 
 /**
  * Creates the database tables we need:
- * 
+ *
  * - yap2      : stores snapshot and metadata for extensions
  * - database2 : stores collection/key/value/metadata rows
-**/
+ **/
 - (BOOL)createTables
 {
-	int status;
-	
-	char *createYapTableStatement =
-	    "CREATE TABLE IF NOT EXISTS \"yap2\""
-	    " (\"extension\" CHAR NOT NULL, "
-	    "  \"key\" CHAR NOT NULL, "
-	    "  \"data\" BLOB, "
-	    "  PRIMARY KEY (\"extension\", \"key\")"
-	    " );";
-	
-	status = sqlite3_exec(db, createYapTableStatement, NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Failed creating 'yap2' table: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	char *createDatabaseTableStatement =
-	    "CREATE TABLE IF NOT EXISTS \"database2\""
-	    " (\"rowid\" INTEGER PRIMARY KEY,"
-	    "  \"collection\" CHAR NOT NULL,"
-	    "  \"key\" CHAR NOT NULL,"
-	    "  \"data\" BLOB,"
-	    "  \"metadata\" BLOB"
-	    " );";
-	
-	status = sqlite3_exec(db, createDatabaseTableStatement, NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Failed creating 'database2' table: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	char *createIndexStatement =
-	    "CREATE UNIQUE INDEX IF NOT EXISTS \"true_primary_key\" ON \"database2\" ( \"collection\", \"key\" );";
-	
-	status = sqlite3_exec(db, createIndexStatement, NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Failed creating index on 'database2' table: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	return YES;
+    int status;
+    
+    char *createYapTableStatement =
+    "CREATE TABLE IF NOT EXISTS \"yap2\""
+    " (\"extension\" CHAR NOT NULL, "
+    "  \"key\" CHAR NOT NULL, "
+    "  \"data\" BLOB, "
+    "  PRIMARY KEY (\"extension\", \"key\")"
+    " );";
+    
+    status = sqlite3_exec(db, createYapTableStatement, NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Failed creating 'yap2' table: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    char *createDatabaseTableStatement =
+    "CREATE TABLE IF NOT EXISTS \"database2\""
+    " (\"rowid\" INTEGER PRIMARY KEY,"
+    "  \"collection\" CHAR NOT NULL,"
+    "  \"key\" CHAR NOT NULL,"
+    "  \"data\" BLOB,"
+    "  \"metadata\" BLOB"
+    " );";
+    
+    status = sqlite3_exec(db, createDatabaseTableStatement, NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Failed creating 'database2' table: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    char *createIndexStatement =
+    "CREATE UNIQUE INDEX IF NOT EXISTS \"true_primary_key\" ON \"database2\" ( \"collection\", \"key\" );";
+    
+    status = sqlite3_exec(db, createIndexStatement, NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Failed creating index on 'database2' table: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    return YES;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -835,210 +844,210 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 + (NSString *)sqliteVersionUsing:(sqlite3 *)aDb
 {
-	sqlite3_stmt *statement;
-	
-	int status = sqlite3_prepare_v2(aDb, "SELECT sqlite_version();", -1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-		return nil;
-	}
-	
-	NSString *version = nil;
-	
-	status = sqlite3_step(statement);
-	if (status == SQLITE_ROW)
-	{
-		const unsigned char *text = sqlite3_column_text(statement, SQLITE_COLUMN_START);
-		int textSize = sqlite3_column_bytes(statement, SQLITE_COLUMN_START);
-		
-		version = [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
-	}
-	else
-	{
-		YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-	}
-	
-	sqlite3_finalize(statement);
-	statement = NULL;
-	
-	return version;
+    sqlite3_stmt *statement;
+    
+    int status = sqlite3_prepare_v2(aDb, "SELECT sqlite_version();", -1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+        return nil;
+    }
+    
+    NSString *version = nil;
+    
+    status = sqlite3_step(statement);
+    if (status == SQLITE_ROW)
+    {
+        const unsigned char *text = sqlite3_column_text(statement, SQLITE_COLUMN_START);
+        int textSize = sqlite3_column_bytes(statement, SQLITE_COLUMN_START);
+        
+        version = [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
+    }
+    else
+    {
+        YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+    }
+    
+    sqlite3_finalize(statement);
+    statement = NULL;
+    
+    return version;
 }
 
 + (int64_t)pragma:(NSString *)pragmaSetting using:(sqlite3 *)aDb
 {
-	if (pragmaSetting == nil) return -1;
-	
-	sqlite3_stmt *statement;
-	NSString *pragma = [NSString stringWithFormat:@"PRAGMA %@;", pragmaSetting];
-	
-	int status = sqlite3_prepare_v2(aDb, [pragma UTF8String], -1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-		return NO;
-	}
-	
-	int64_t result = -1;
-	
-	status = sqlite3_step(statement);
-	if (status == SQLITE_ROW)
-	{
-		result = sqlite3_column_int64(statement, SQLITE_COLUMN_START);
-	}
-	else if (status == SQLITE_ERROR)
-	{
-		YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-	}
-	
-	sqlite3_finalize(statement);
-	statement = NULL;
-	
-	return result;
+    if (pragmaSetting == nil) return -1;
+    
+    sqlite3_stmt *statement;
+    NSString *pragma = [NSString stringWithFormat:@"PRAGMA %@;", pragmaSetting];
+    
+    int status = sqlite3_prepare_v2(aDb, [pragma UTF8String], -1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+        return NO;
+    }
+    
+    int64_t result = -1;
+    
+    status = sqlite3_step(statement);
+    if (status == SQLITE_ROW)
+    {
+        result = sqlite3_column_int64(statement, SQLITE_COLUMN_START);
+    }
+    else if (status == SQLITE_ERROR)
+    {
+        YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+    }
+    
+    sqlite3_finalize(statement);
+    statement = NULL;
+    
+    return result;
 }
 
 + (NSString *)pragmaValueForAutoVacuum:(int64_t)auto_vacuum
 {
-	switch(auto_vacuum)
-	{
-		case 0 : return @"NONE";
-		case 1 : return @"FULL";
-		case 2 : return @"INCREMENTAL";
-		default: return @"UNKNOWN";
-	}
+    switch(auto_vacuum)
+    {
+        case 0 : return @"NONE";
+        case 1 : return @"FULL";
+        case 2 : return @"INCREMENTAL";
+        default: return @"UNKNOWN";
+    }
 }
 
 + (NSString *)pragmaValueForSynchronous:(int64_t)synchronous
 {
-	switch(synchronous)
-	{
-		case 0 : return @"OFF";
-		case 1 : return @"NORMAL";
-		case 2 : return @"FULL";
-		default: return @"UNKNOWN";
-	}
+    switch(synchronous)
+    {
+        case 0 : return @"OFF";
+        case 1 : return @"NORMAL";
+        case 2 : return @"FULL";
+        default: return @"UNKNOWN";
+    }
 }
 
 /**
  * Returns whether or not the given table exists.
-**/
+ **/
 + (BOOL)tableExists:(NSString *)tableName using:(sqlite3 *)aDb
 {
-	if (tableName == nil) return NO;
-	
-	sqlite3_stmt *statement;
-	char *stmt = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?";
-	
-	int status = sqlite3_prepare_v2(aDb, stmt, (int)strlen(stmt)+1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-		return NO;
-	}
-	
-	BOOL result = NO;
-	
-	sqlite3_bind_text(statement, SQLITE_BIND_START, [tableName UTF8String], -1, SQLITE_TRANSIENT);
-	
-	status = sqlite3_step(statement);
-	if (status == SQLITE_ROW)
-	{
-		int count = sqlite3_column_int(statement, SQLITE_COLUMN_START);
-		
-		result = (count > 0);
-	}
-	else if (status == SQLITE_ERROR)
-	{
-		YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-	}
-	
-	sqlite3_finalize(statement);
-	statement = NULL;
-	
-	return result;
+    if (tableName == nil) return NO;
+    
+    sqlite3_stmt *statement;
+    char *stmt = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?";
+    
+    int status = sqlite3_prepare_v2(aDb, stmt, (int)strlen(stmt)+1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+        return NO;
+    }
+    
+    BOOL result = NO;
+    
+    sqlite3_bind_text(statement, SQLITE_BIND_START, [tableName UTF8String], -1, SQLITE_TRANSIENT);
+    
+    status = sqlite3_step(statement);
+    if (status == SQLITE_ROW)
+    {
+        int count = sqlite3_column_int(statement, SQLITE_COLUMN_START);
+        
+        result = (count > 0);
+    }
+    else if (status == SQLITE_ERROR)
+    {
+        YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+    }
+    
+    sqlite3_finalize(statement);
+    statement = NULL;
+    
+    return result;
 }
 
 + (NSArray *)tableNamesUsing:(sqlite3 *)aDb
 {
-	sqlite3_stmt *statement;
-	char *stmt = "SELECT name FROM sqlite_master WHERE type = 'table';";
-	
-	int status = sqlite3_prepare_v2(aDb, stmt, (int)strlen(stmt)+1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-		return nil;
-	}
-	
-	NSMutableArray *tableNames = [NSMutableArray array];
-	
-	while ((status = sqlite3_step(statement)) == SQLITE_ROW)
-	{
-		const unsigned char *text = sqlite3_column_text(statement, SQLITE_COLUMN_START);
-		int textSize = sqlite3_column_bytes(statement, SQLITE_COLUMN_START);
-		
-		NSString *tableName = [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
-		
-		if (tableName) {
-			[tableNames addObject:tableName];
-		}
-		
-	}
-	
-	if (status != SQLITE_DONE)
-	{
-		YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-	}
-	
-	sqlite3_finalize(statement);
-	statement = NULL;
-	
-	return tableNames;
+    sqlite3_stmt *statement;
+    char *stmt = "SELECT name FROM sqlite_master WHERE type = 'table';";
+    
+    int status = sqlite3_prepare_v2(aDb, stmt, (int)strlen(stmt)+1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+        return nil;
+    }
+    
+    NSMutableArray *tableNames = [NSMutableArray array];
+    
+    while ((status = sqlite3_step(statement)) == SQLITE_ROW)
+    {
+        const unsigned char *text = sqlite3_column_text(statement, SQLITE_COLUMN_START);
+        int textSize = sqlite3_column_bytes(statement, SQLITE_COLUMN_START);
+        
+        NSString *tableName = [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
+        
+        if (tableName) {
+            [tableNames addObject:tableName];
+        }
+        
+    }
+    
+    if (status != SQLITE_DONE)
+    {
+        YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+    }
+    
+    sqlite3_finalize(statement);
+    statement = NULL;
+    
+    return tableNames;
 }
 
 /**
  * Extracts and returns column names from the given table in the database.
-**/
+ **/
 + (NSArray *)columnNamesForTable:(NSString *)tableName using:(sqlite3 *)aDb
 {
-	if (tableName == nil) return nil;
-	
-	sqlite3_stmt *statement;
-	NSString *pragma = [NSString stringWithFormat:@"PRAGMA table_info('%@');", tableName];
-	
-	int status = sqlite3_prepare_v2(aDb, [pragma UTF8String], -1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-		return nil;
-	}
-	
-	NSMutableArray *tableColumnNames = [NSMutableArray array];
-	
-	while ((status = sqlite3_step(statement)) == SQLITE_ROW)
-	{
-		// cid|name|type|notnull|dflt|value|pk
-		// 0  |1   |2   |3      |4   |5    |6
-		
-		const unsigned char *text = sqlite3_column_text(statement, 1);
-		int textSize = sqlite3_column_bytes(statement, 1);
-		
-		NSString *columnName = [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
-		if (columnName)
-		{
-			[tableColumnNames addObject:columnName];
-		}
-	}
-	
-	if (status != SQLITE_DONE)
-	{
-		YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-	}
-	
-	sqlite3_finalize(statement);
-	statement = NULL;
-	
-	return tableColumnNames;
+    if (tableName == nil) return nil;
+    
+    sqlite3_stmt *statement;
+    NSString *pragma = [NSString stringWithFormat:@"PRAGMA table_info('%@');", tableName];
+    
+    int status = sqlite3_prepare_v2(aDb, [pragma UTF8String], -1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+        return nil;
+    }
+    
+    NSMutableArray *tableColumnNames = [NSMutableArray array];
+    
+    while ((status = sqlite3_step(statement)) == SQLITE_ROW)
+    {
+        // cid|name|type|notnull|dflt|value|pk
+        // 0  |1   |2   |3      |4   |5    |6
+        
+        const unsigned char *text = sqlite3_column_text(statement, 1);
+        int textSize = sqlite3_column_bytes(statement, 1);
+        
+        NSString *columnName = [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
+        if (columnName)
+        {
+            [tableColumnNames addObject:columnName];
+        }
+    }
+    
+    if (status != SQLITE_DONE)
+    {
+        YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+    }
+    
+    sqlite3_finalize(statement);
+    statement = NULL;
+    
+    return tableColumnNames;
 }
 
 /**
@@ -1046,52 +1055,52 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
  * The dictionary format is:
  *
  * key:(NSString *)columnName -> value:(NSString *)affinity
-**/
+ **/
 + (NSDictionary *)columnNamesAndAffinityForTable:(NSString *)tableName using:(sqlite3 *)aDb
 {
-	if (tableName == nil) return nil;
-	
-	sqlite3_stmt *statement;
-	NSString *pragma = [NSString stringWithFormat:@"PRAGMA table_info('%@');", tableName];
-	
-	int status = sqlite3_prepare_v2(aDb, [pragma UTF8String], -1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-		return nil;
-	}
-	
-	NSMutableDictionary *columns = [NSMutableDictionary dictionary];
-	
-	while ((status = sqlite3_step(statement)) == SQLITE_ROW)
-	{
-		// cid|name|type|notnull|dflt|value|pk
-		// 0  |1   |2   |3      |4   |5    |6
-		
-		const unsigned char *_name = sqlite3_column_text(statement, 1);
-		int _nameSize = sqlite3_column_bytes(statement, 1);
-		
-		const unsigned char *_type = sqlite3_column_text(statement, 2);
-		int _typeSize = sqlite3_column_bytes(statement, 2);
-		
-		NSString *name     = [[NSString alloc] initWithBytes:_name length:_nameSize encoding:NSUTF8StringEncoding];
-		NSString *affinity = [[NSString alloc] initWithBytes:_type length:_typeSize encoding:NSUTF8StringEncoding];
-		
-		if (name && affinity)
-		{
-			[columns setObject:affinity forKey:name];
-		}
-	}
-	
-	if (status != SQLITE_DONE)
-	{
-		YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
-	}
-	
-	sqlite3_finalize(statement);
-	statement = NULL;
-	
-	return columns;
+    if (tableName == nil) return nil;
+    
+    sqlite3_stmt *statement;
+    NSString *pragma = [NSString stringWithFormat:@"PRAGMA table_info('%@');", tableName];
+    
+    int status = sqlite3_prepare_v2(aDb, [pragma UTF8String], -1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+        return nil;
+    }
+    
+    NSMutableDictionary *columns = [NSMutableDictionary dictionary];
+    
+    while ((status = sqlite3_step(statement)) == SQLITE_ROW)
+    {
+        // cid|name|type|notnull|dflt|value|pk
+        // 0  |1   |2   |3      |4   |5    |6
+        
+        const unsigned char *_name = sqlite3_column_text(statement, 1);
+        int _nameSize = sqlite3_column_bytes(statement, 1);
+        
+        const unsigned char *_type = sqlite3_column_text(statement, 2);
+        int _typeSize = sqlite3_column_bytes(statement, 2);
+        
+        NSString *name     = [[NSString alloc] initWithBytes:_name length:_nameSize encoding:NSUTF8StringEncoding];
+        NSString *affinity = [[NSString alloc] initWithBytes:_type length:_typeSize encoding:NSUTF8StringEncoding];
+        
+        if (name && affinity)
+        {
+            [columns setObject:affinity forKey:name];
+        }
+    }
+    
+    if (status != SQLITE_DONE)
+    {
+        YDBLogError(@"%@: Error executing statement! %d %s", THIS_METHOD, status, sqlite3_errmsg(aDb));
+    }
+    
+    sqlite3_finalize(statement);
+    statement = NULL;
+    
+    return columns;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1101,172 +1110,172 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 /**
  * Gets the version of the table.
  * This is used to perform the various upgrade paths.
-**/
+ **/
 - (BOOL)get_user_version:(int *)user_version_ptr
 {
-	sqlite3_stmt *pragmaStatement;
-	int status;
-	int user_version;
-	
-	char *stmt = "PRAGMA user_version;";
-	
-	status = sqlite3_prepare_v2(db, stmt, (int)strlen(stmt)+1, &pragmaStatement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error creating pragma user_version statement! %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	status = sqlite3_step(pragmaStatement);
-	if (status == SQLITE_ROW)
-	{
-		user_version = sqlite3_column_int(pragmaStatement, SQLITE_COLUMN_START);
-	}
-	else
-	{
-		YDBLogError(@"Error fetching user_version: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	sqlite3_finalize(pragmaStatement);
-	pragmaStatement = NULL;
-	
-	// If user_version is zero, then this is a new database
-	
-	if (user_version == 0)
-	{
-		user_version = YAP_DATABASE_CURRENT_VERION;
-		[self set_user_version:user_version];
-	}
-	
-	if (user_version_ptr)
-		*user_version_ptr = user_version;
-	return YES;
+    sqlite3_stmt *pragmaStatement;
+    int status;
+    int user_version;
+    
+    char *stmt = "PRAGMA user_version;";
+    
+    status = sqlite3_prepare_v2(db, stmt, (int)strlen(stmt)+1, &pragmaStatement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error creating pragma user_version statement! %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    status = sqlite3_step(pragmaStatement);
+    if (status == SQLITE_ROW)
+    {
+        user_version = sqlite3_column_int(pragmaStatement, SQLITE_COLUMN_START);
+    }
+    else
+    {
+        YDBLogError(@"Error fetching user_version: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    sqlite3_finalize(pragmaStatement);
+    pragmaStatement = NULL;
+    
+    // If user_version is zero, then this is a new database
+    
+    if (user_version == 0)
+    {
+        user_version = YAP_DATABASE_CURRENT_VERION;
+        [self set_user_version:user_version];
+    }
+    
+    if (user_version_ptr)
+        *user_version_ptr = user_version;
+    return YES;
 }
 
 /**
  * Sets the version of the table.
  * The version is used to check and perform upgrade logic if needed.
-**/
+ **/
 - (BOOL)set_user_version:(int)user_version
 {
-	NSString *query = [NSString stringWithFormat:@"PRAGMA user_version = %d;", user_version];
-	
-	int status = sqlite3_exec(db, [query UTF8String], NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error setting user_version: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	return YES;
+    NSString *query = [NSString stringWithFormat:@"PRAGMA user_version = %d;", user_version];
+    
+    int status = sqlite3_exec(db, [query UTF8String], NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error setting user_version: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    return YES;
 }
 
 - (BOOL)upgradeTable_1_2
 {
-	// In version 1, we used a table named "yap" which had {key, data}.
-	// In version 2, we use a table named "yap2" which has {extension, key, data}
-	
-	int status = sqlite3_exec(db, "DROP TABLE IF EXISTS \"yap\"", NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Failed dropping 'yap' table: %d %s", status, sqlite3_errmsg(db));
-	}
-	
-	return YES;
+    // In version 1, we used a table named "yap" which had {key, data}.
+    // In version 2, we use a table named "yap2" which has {extension, key, data}
+    
+    int status = sqlite3_exec(db, "DROP TABLE IF EXISTS \"yap\"", NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Failed dropping 'yap' table: %d %s", status, sqlite3_errmsg(db));
+    }
+    
+    return YES;
 }
 
 /**
  * In version 3 (more commonly known as version 2.1),
  * we altered the tables to use INTEGER PRIMARY KEY's so we could pass rowid's to extensions.
- * 
+ *
  * This method migrates 'database' to 'database2'.
-**/
+ **/
 - (BOOL)upgradeTable_2_3
 {
-	int status;
-	
-	char *stmt = "INSERT INTO \"database2\" (\"collection\", \"key\", \"data\", \"metadata\")"
-	             " SELECT \"collection\", \"key\", \"data\", \"metadata\" FROM \"database\";";
-	
-	status = sqlite3_exec(db, stmt, NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error migrating 'database' to 'database2': %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	status = sqlite3_exec(db, "DROP TABLE IF EXISTS \"database\"", NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Failed dropping 'database' table: %d %s", status, sqlite3_errmsg(db));
-		return NO;
-	}
-	
-	return YES;
+    int status;
+    
+    char *stmt = "INSERT INTO \"database2\" (\"collection\", \"key\", \"data\", \"metadata\")"
+    " SELECT \"collection\", \"key\", \"data\", \"metadata\" FROM \"database\";";
+    
+    status = sqlite3_exec(db, stmt, NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error migrating 'database' to 'database2': %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    status = sqlite3_exec(db, "DROP TABLE IF EXISTS \"database\"", NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Failed dropping 'database' table: %d %s", status, sqlite3_errmsg(db));
+        return NO;
+    }
+    
+    return YES;
 }
 
 /**
  * Performs upgrade checks, and implements the upgrade "plumbing" by invoking the appropriate upgrade methods.
- * 
+ *
  * To add custom upgrade logic, implement a method named "upgradeTable_X_Y",
  * where X is the previous version, and Y is the new version.
  * For example:
- * 
+ *
  * - (BOOL)upgradeTable_1_2 {
  *     // Upgrades from version 1 to version 2 of YapDatabase.
  *     // Return YES if successful.
  * }
- * 
+ *
  * IMPORTANT:
  * This is for upgrades of the database schema, and low-level operations of YapDatabase.
  * This is NOT for upgrading data within the database (i.e. objects, metadata, or keys).
  * Such data upgrades should be performed client side.
  *
  * This method is run asynchronously on the queue.
-**/
+ **/
 - (void)upgradeTable
 {
-	int user_version = 0;
-	if (![self get_user_version:&user_version]) return;
-	
-	while (user_version < YAP_DATABASE_CURRENT_VERION)
-	{
-		// Invoke method upgradeTable_X_Y
-		// where X == current_version, and Y == current_version+1.
-		//
-		// Do this until we're up-to-date.
-		
-		int new_user_version = user_version + 1;
-		
-		NSString *selName = [NSString stringWithFormat:@"upgradeTable_%d_%d", user_version, new_user_version];
-		SEL sel = NSSelectorFromString(selName);
-		
-		if ([self respondsToSelector:sel])
-		{
-			YDBLogInfo(@"Upgrading database (%@) from version %d to %d...",
-			          [databasePath lastPathComponent], user_version, new_user_version);
-			
-			#pragma clang diagnostic push
-			#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-			if ([self performSelector:sel])
-			#pragma clang diagnostic pop
-			{
-				[self set_user_version:new_user_version];
-			}
-			else
-			{
-				YDBLogError(@"Error upgrading database (%@)", [databasePath lastPathComponent]);
-				break;
-			}
-		}
-		else
-		{
-			YDBLogWarn(@"Missing upgrade method: %@", selName);
-		}
-		
-		user_version = new_user_version;
-	}
+    int user_version = 0;
+    if (![self get_user_version:&user_version]) return;
+    
+    while (user_version < YAP_DATABASE_CURRENT_VERION)
+    {
+        // Invoke method upgradeTable_X_Y
+        // where X == current_version, and Y == current_version+1.
+        //
+        // Do this until we're up-to-date.
+        
+        int new_user_version = user_version + 1;
+        
+        NSString *selName = [NSString stringWithFormat:@"upgradeTable_%d_%d", user_version, new_user_version];
+        SEL sel = NSSelectorFromString(selName);
+        
+        if ([self respondsToSelector:sel])
+        {
+            YDBLogInfo(@"Upgrading database (%@) from version %d to %d...",
+                       [databasePath lastPathComponent], user_version, new_user_version);
+            
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            if ([self performSelector:sel])
+#pragma clang diagnostic pop
+            {
+                [self set_user_version:new_user_version];
+            }
+            else
+            {
+                YDBLogError(@"Error upgrading database (%@)", [databasePath lastPathComponent]);
+                break;
+            }
+        }
+        else
+        {
+            YDBLogWarn(@"Missing upgrade method: %@", selName);
+        }
+        
+        user_version = new_user_version;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1275,122 +1284,122 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 /**
  * This method is run asynchronously on the snapshotQueue.
-**/
+ **/
 - (void)prepare
 {
-	// Initialize snapshot
-	
-	snapshot = 0;
-	
-	// Write it to disk (replacing any previous value from last app run)
-	
-	[self beginTransaction];
-	{
-		sqliteVersion = [YapDatabase sqliteVersionUsing:db];
-		YDBLogVerbose(@"sqlite version = %@", sqliteVersion);
-		
-		pageSize = (uint64_t)[YapDatabase pragma:@"page_size" using:db];
-		
-		[self fetchPreviouslyRegisteredExtensionNames];
-		[self writeSnapshot];
-	}
-	[self commitTransaction];
-	[self asyncCheckpoint:snapshot];
+    // Initialize snapshot
+    
+    snapshot = 0;
+    
+    // Write it to disk (replacing any previous value from last app run)
+    
+    [self beginTransaction];
+    {
+        sqliteVersion = [YapDatabase sqliteVersionUsing:db];
+        YDBLogVerbose(@"sqlite version = %@", sqliteVersion);
+        
+        pageSize = (uint64_t)[YapDatabase pragma:@"page_size" using:db];
+        
+        [self fetchPreviouslyRegisteredExtensionNames];
+        [self writeSnapshot];
+    }
+    [self commitTransaction];
+    [self asyncCheckpoint:snapshot];
 }
 
 - (void)beginTransaction
 {
-	int status = status = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error in '%@': %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
-	}
+    int status = status = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error in '%@': %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
+    }
 }
 
 - (void)commitTransaction
 {
-	int status = status = sqlite3_exec(db, "COMMIT TRANSACTION;", NULL, NULL, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"Error in '%@': %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
-	}
+    int status = status = sqlite3_exec(db, "COMMIT TRANSACTION;", NULL, NULL, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"Error in '%@': %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
+    }
 }
 
 - (void)writeSnapshot
 {
-	int status;
-	sqlite3_stmt *statement;
-	
-	char *stmt = "INSERT OR REPLACE INTO \"yap2\" (\"extension\", \"key\", \"data\") VALUES (?, ?, ?);";
-	
-	int const bind_idx_extension = SQLITE_BIND_START + 0;
-	int const bind_idx_key       = SQLITE_BIND_START + 1;
-	int const bind_idx_data      = SQLITE_BIND_START + 2;
-	
-	status = sqlite3_prepare_v2(db, stmt, (int)strlen(stmt)+1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
-	}
-	else
-	{
-		char *extension = "";
-		sqlite3_bind_text(statement, bind_idx_extension, extension, (int)strlen(extension), SQLITE_STATIC);
-		
-		char *key = "snapshot";
-		sqlite3_bind_text(statement, bind_idx_key, key, (int)strlen(key), SQLITE_STATIC);
-		
-		sqlite3_bind_int64(statement, bind_idx_data, (sqlite3_int64)snapshot);
-		
-		status = sqlite3_step(statement);
-		if (status != SQLITE_DONE)
-		{
-			YDBLogError(@"%@: Error in statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
-		}
-		
-		sqlite3_finalize(statement);
-	}
+    int status;
+    sqlite3_stmt *statement;
+    
+    char *stmt = "INSERT OR REPLACE INTO \"yap2\" (\"extension\", \"key\", \"data\") VALUES (?, ?, ?);";
+    
+    int const bind_idx_extension = SQLITE_BIND_START + 0;
+    int const bind_idx_key       = SQLITE_BIND_START + 1;
+    int const bind_idx_data      = SQLITE_BIND_START + 2;
+    
+    status = sqlite3_prepare_v2(db, stmt, (int)strlen(stmt)+1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
+    }
+    else
+    {
+        char *extension = "";
+        sqlite3_bind_text(statement, bind_idx_extension, extension, (int)strlen(extension), SQLITE_STATIC);
+        
+        char *key = "snapshot";
+        sqlite3_bind_text(statement, bind_idx_key, key, (int)strlen(key), SQLITE_STATIC);
+        
+        sqlite3_bind_int64(statement, bind_idx_data, (sqlite3_int64)snapshot);
+        
+        status = sqlite3_step(statement);
+        if (status != SQLITE_DONE)
+        {
+            YDBLogError(@"%@: Error in statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
+        }
+        
+        sqlite3_finalize(statement);
+    }
 }
 
 - (void)fetchPreviouslyRegisteredExtensionNames
 {
-	int status;
-	sqlite3_stmt *statement;
-	
-	char *stmt = "SELECT DISTINCT \"extension\" FROM \"yap2\";";
-	
-	NSMutableArray *extensionNames = [NSMutableArray array];
-	
-	status = sqlite3_prepare_v2(db, stmt, (int)strlen(stmt)+1, &statement, NULL);
-	if (status != SQLITE_OK)
-	{
-		YDBLogError(@"%@: Error creating statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
-	}
-	else
-	{
-		while ((status = sqlite3_step(statement)) == SQLITE_ROW)
-		{
-			const unsigned char *text = sqlite3_column_text(statement, SQLITE_COLUMN_START);
-			int textSize = sqlite3_column_bytes(statement, SQLITE_COLUMN_START);
-			
-			NSString *extensionName =
-			    [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
-			
-			if ([extensionName length] > 0)
-			{
-				[extensionNames addObject:extensionName];
-			}
-		}
-		
-		if (status != SQLITE_DONE)
-		{
-			YDBLogError(@"%@: Error in statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
-		}
-		
-		sqlite3_finalize(statement);
-	}
-	
-	previouslyRegisteredExtensionNames = extensionNames;
+    int status;
+    sqlite3_stmt *statement;
+    
+    char *stmt = "SELECT DISTINCT \"extension\" FROM \"yap2\";";
+    
+    NSMutableArray *extensionNames = [NSMutableArray array];
+    
+    status = sqlite3_prepare_v2(db, stmt, (int)strlen(stmt)+1, &statement, NULL);
+    if (status != SQLITE_OK)
+    {
+        YDBLogError(@"%@: Error creating statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
+    }
+    else
+    {
+        while ((status = sqlite3_step(statement)) == SQLITE_ROW)
+        {
+            const unsigned char *text = sqlite3_column_text(statement, SQLITE_COLUMN_START);
+            int textSize = sqlite3_column_bytes(statement, SQLITE_COLUMN_START);
+            
+            NSString *extensionName =
+            [[NSString alloc] initWithBytes:text length:textSize encoding:NSUTF8StringEncoding];
+            
+            if ([extensionName length] > 0)
+            {
+                [extensionNames addObject:extensionName];
+            }
+        }
+        
+        if (status != SQLITE_DONE)
+        {
+            YDBLogError(@"%@: Error in statement: %d %s", THIS_METHOD, status, sqlite3_errmsg(db));
+        }
+        
+        sqlite3_finalize(statement);
+    }
+    
+    previouslyRegisteredExtensionNames = extensionNames;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1399,156 +1408,156 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 - (YapDatabaseConnectionDefaults *)connectionDefaults
 {
-	__block YapDatabaseConnectionDefaults *result = nil;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = [connectionDefaults copy];
-	});
-	
-	return result;
+    __block YapDatabaseConnectionDefaults *result = nil;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = [connectionDefaults copy];
+    });
+    
+    return result;
 }
 
 - (BOOL)defaultObjectCacheEnabled
 {
-	__block BOOL result = NO;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.objectCacheEnabled;
-	});
-	
-	return result;
+    __block BOOL result = NO;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.objectCacheEnabled;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultObjectCacheEnabled:(BOOL)defaultObjectCacheEnabled
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.objectCacheEnabled = defaultObjectCacheEnabled;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.objectCacheEnabled = defaultObjectCacheEnabled;
+    });
 }
 
 - (NSUInteger)defaultObjectCacheLimit
 {
-	__block NSUInteger result = NO;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.objectCacheLimit;
-	});
-	
-	return result;
+    __block NSUInteger result = NO;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.objectCacheLimit;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultObjectCacheLimit:(NSUInteger)defaultObjectCacheLimit
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.objectCacheLimit = defaultObjectCacheLimit;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.objectCacheLimit = defaultObjectCacheLimit;
+    });
 }
 
 - (BOOL)defaultMetadataCacheEnabled
 {
-	__block BOOL result = NO;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.metadataCacheEnabled;
-	});
-	
-	return result;
+    __block BOOL result = NO;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.metadataCacheEnabled;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultMetadataCacheEnabled:(BOOL)defaultMetadataCacheEnabled
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.metadataCacheEnabled = defaultMetadataCacheEnabled;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.metadataCacheEnabled = defaultMetadataCacheEnabled;
+    });
 }
 
 - (NSUInteger)defaultMetadataCacheLimit
 {
-	__block NSUInteger result = 0;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.metadataCacheLimit;
-	});
-	
-	return result;
+    __block NSUInteger result = 0;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.metadataCacheLimit;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultMetadataCacheLimit:(NSUInteger)defaultMetadataCacheLimit
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.metadataCacheLimit = defaultMetadataCacheLimit;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.metadataCacheLimit = defaultMetadataCacheLimit;
+    });
 }
 
 - (YapDatabasePolicy)defaultObjectPolicy
 {
-	__block YapDatabasePolicy result = YapDatabasePolicyShare;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.objectPolicy;
-	});
-	
-	return result;
+    __block YapDatabasePolicy result = YapDatabasePolicyShare;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.objectPolicy;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultObjectPolicy:(YapDatabasePolicy)defaultObjectPolicy
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.objectPolicy = defaultObjectPolicy;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.objectPolicy = defaultObjectPolicy;
+    });
 }
 
 - (YapDatabasePolicy)defaultMetadataPolicy
 {
-	__block YapDatabasePolicy result = YapDatabasePolicyShare;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.metadataPolicy;
-	});
-	
-	return result;
+    __block YapDatabasePolicy result = YapDatabasePolicyShare;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.metadataPolicy;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultMetadataPolicy:(YapDatabasePolicy)defaultMetadataPolicy
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.metadataPolicy = defaultMetadataPolicy;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.metadataPolicy = defaultMetadataPolicy;
+    });
 }
 
 #if TARGET_OS_IPHONE
 
 - (YapDatabaseConnectionFlushMemoryFlags)defaultAutoFlushMemoryFlags
 {
-	__block YapDatabaseConnectionFlushMemoryFlags result = YapDatabaseConnectionFlushMemoryFlags_None;
-	
-	dispatch_sync(internalQueue, ^{
-		
-		result = connectionDefaults.autoFlushMemoryFlags;
-	});
-	
-	return result;
+    __block YapDatabaseConnectionFlushMemoryFlags result = YapDatabaseConnectionFlushMemoryFlags_None;
+    
+    dispatch_sync(internalQueue, ^{
+        
+        result = connectionDefaults.autoFlushMemoryFlags;
+    });
+    
+    return result;
 }
 
 - (void)setDefaultAutoFlushMemoryFlags:(YapDatabaseConnectionFlushMemoryFlags)defaultAutoFlushMemoryFlags
 {
-	dispatch_sync(internalQueue, ^{
-		
-		connectionDefaults.autoFlushMemoryFlags = defaultAutoFlushMemoryFlags;
-	});
+    dispatch_sync(internalQueue, ^{
+        
+        connectionDefaults.autoFlushMemoryFlags = defaultAutoFlushMemoryFlags;
+    });
 }
 
 #endif
@@ -1559,85 +1568,85 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 
 /**
  * This method is called from [self newConnection].
-**/
+ **/
 - (void)addConnection:(YapDatabaseConnection *)connection
 {
-	// We can asynchronously add the connection to the state table.
-	// This is safe as the connection itself must go through the same queue in order to do anything.
-	//
-	// The primary motivation in adding the asynchronous functionality is due to the following common use case:
-	//
-	// YapDatabase *database = [[YapDatabase alloc] initWithPath:path];
-	// YapDatabaseConnection *databaseConnection = [database newConnection];
-	//
-	// The YapDatabase init method is asynchronously preparing itself through the snapshot queue.
-	// We'd like to avoid blocking the very next line of code and allow the asynchronous prepare to continue.
-	
-	dispatch_async(connection->connectionQueue, ^{
-		
-		dispatch_sync(snapshotQueue, ^{ @autoreleasepool {
-			
-			// Add the connection to the state table
-			
-			YapDatabaseConnectionState *state = [[YapDatabaseConnectionState alloc] initWithConnection:connection];
-			[connectionStates addObject:state];
-			
-			YDBLogVerbose(@"Created new connection(%p) for <%@ %p: databaseName=%@, connectionCount=%lu>",
-			              connection, [self class], self, [databasePath lastPathComponent],
-			              (unsigned long)[connectionStates count]);
-			
-			// Invoke the one-time prepare method, so the connection can perform any needed initialization.
-			// Be sure to do this within the snapshotQueue, as the prepare method depends on this.
-			
-			[connection prepare];
-		}});
-	});
+    // We can asynchronously add the connection to the state table.
+    // This is safe as the connection itself must go through the same queue in order to do anything.
+    //
+    // The primary motivation in adding the asynchronous functionality is due to the following common use case:
+    //
+    // YapDatabase *database = [[YapDatabase alloc] initWithPath:path];
+    // YapDatabaseConnection *databaseConnection = [database newConnection];
+    //
+    // The YapDatabase init method is asynchronously preparing itself through the snapshot queue.
+    // We'd like to avoid blocking the very next line of code and allow the asynchronous prepare to continue.
+    
+    dispatch_async(connection->connectionQueue, ^{
+        
+        dispatch_sync(snapshotQueue, ^{ @autoreleasepool {
+            
+            // Add the connection to the state table
+            
+            YapDatabaseConnectionState *state = [[YapDatabaseConnectionState alloc] initWithConnection:connection];
+            [connectionStates addObject:state];
+            
+            YDBLogVerbose(@"Created new connection(%p) for <%@ %p: databaseName=%@, connectionCount=%lu>",
+                          connection, [self class], self, [databasePath lastPathComponent],
+                          (unsigned long)[connectionStates count]);
+            
+            // Invoke the one-time prepare method, so the connection can perform any needed initialization.
+            // Be sure to do this within the snapshotQueue, as the prepare method depends on this.
+            
+            [connection prepare];
+        }});
+    });
 }
 
 /**
  * This method is called from YapDatabaseConnection's dealloc method.
-**/
+ **/
 - (void)removeConnection:(YapDatabaseConnection *)connection
 {
-	dispatch_block_t block = ^{ @autoreleasepool {
-		
-		NSUInteger index = 0;
-		for (YapDatabaseConnectionState *state in connectionStates)
-		{
-			if (state->connection == connection)
-			{
-				[connectionStates removeObjectAtIndex:index];
-				break;
-			}
-			
-			index++;
-		}
-		
-		YDBLogVerbose(@"Removed connection(%p) from <%@ %p: databaseName=%@, connectionCount=%lu>",
-		              connection, [self class], self, [databasePath lastPathComponent],
-		              (unsigned long)[connectionStates count]);
-	}};
-	
-	// We prefer to invoke this method synchronously.
-	//
-	// The connection may be the last object retaining the database.
-	// It's easier to trace object deallocations when they happen in a predictable order.
-	
-	if (dispatch_get_specific(IsOnSnapshotQueueKey))
-		block();
-	else
-		dispatch_sync(snapshotQueue, block);
+    dispatch_block_t block = ^{ @autoreleasepool {
+        
+        NSUInteger index = 0;
+        for (YapDatabaseConnectionState *state in connectionStates)
+        {
+            if (state->connection == connection)
+            {
+                [connectionStates removeObjectAtIndex:index];
+                break;
+            }
+            
+            index++;
+        }
+        
+        YDBLogVerbose(@"Removed connection(%p) from <%@ %p: databaseName=%@, connectionCount=%lu>",
+                      connection, [self class], self, [databasePath lastPathComponent],
+                      (unsigned long)[connectionStates count]);
+    }};
+    
+    // We prefer to invoke this method synchronously.
+    //
+    // The connection may be the last object retaining the database.
+    // It's easier to trace object deallocations when they happen in a predictable order.
+    
+    if (dispatch_get_specific(IsOnSnapshotQueueKey))
+        block();
+    else
+        dispatch_sync(snapshotQueue, block);
 }
 
 /**
  * This is a public method called to create a new connection.
-**/
-- (YapDatabaseConnection *)newConnection
+ **/
+- (YapDatabaseConnection *)newConnectionWithTag:(NSString *)tag
 {
-	YapDatabaseConnection *connection = [[YapDatabaseConnection alloc] initWithDatabase:self];
-	
-	[self addConnection:connection];
-	return connection;
+    YapDatabaseConnection *connection = [[YapDatabaseConnection alloc] initWithDatabase:self tag:tag];
+    
+    [self addConnection:connection];
+    return connection;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2001,7 +2010,7 @@ NSString *const YapDatabaseNotificationKey           = @"notification";
 {
 	if (registrationConnection == nil)
 	{
-		registrationConnection = [self newConnection];
+        registrationConnection = [self newConnectionWithTag:@"YapDatabase internal registrationConnection"];
 		registrationConnection.name = @"YapDatabase_extensionRegistrationConnection";
 		
 		NSTimeInterval delayInSeconds = 5.0;

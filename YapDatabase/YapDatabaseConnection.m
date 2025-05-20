@@ -52,9 +52,11 @@ NS_INLINE BOOL YDBIsMainThread()
 
 #endif
 
+static NSMutableDictionary<NSString *, NSString *> *connectionsDict = nil;
+
 @implementation YapDatabaseConnection {
+    
 @private
-	
 	uint64_t snapshot;
 	
 	id sharedKeySetForInternalChangeset;
@@ -117,6 +119,54 @@ NS_INLINE BOOL YDBIsMainThread()
 	OSSpinLock lock;
 	BOOL writeQueueSuspended;
 	BOOL activeReadWriteTransaction;
+    
+}
+
++ (void)initialize {
+    if (self == [YapDatabaseConnection class]) {
+        connectionsDict = [[NSMutableDictionary alloc] init];
+    }
+}
+
++ (void)addToConnectionsDict:(NSString *)value forPointer:(void *)ptr {
+    @synchronized (self) {
+        NSString *address = [NSString stringWithFormat:@"%p", ptr];
+        [connectionsDict setObject:value forKey:address];
+        if ([YapDatabase logToConsole]) {
+            NSLog(@"[HostApp] [YapDatabaseConnection] connectionsDict size=%i", connectionsDict.count);
+        }
+    }
+}
+
++ (void)removeFromConnectionsDict:(void *)ptr {
+    @synchronized (self) {
+        NSString *address = [NSString stringWithFormat:@"%p", ptr];
+        [connectionsDict removeObjectForKey:address];
+        if ([YapDatabase logToConsole]) {
+            NSLog(@"[HostApp] [YapDatabaseConnection] connectionsDict size=%i", connectionsDict.count);
+        }
+    }
+}
+
++ (void)dumpConnectionsDict {
+    @synchronized (self) {
+        if ([YapDatabase logToConsole]) {
+            NSLog(@"[HostApp] [YapDatabaseConnection] connectionsDict dump size=%i", connectionsDict.count);
+            for (NSString *key in connectionsDict) {
+                NSLog(@"[HostApp] [YapDatabaseConnection]    %@ - %@", key, connectionsDict[key]);
+            }
+        }
+    }
+}
+
++ (NSMutableDictionary<NSString *, NSString *> *)connectionsDict {
+    return connectionsDict;
+}
+
++ (NSString *)valueForKey:(NSString *)key {
+    @synchronized (self) {
+        return [connectionsDict objectForKey:key];
+    }
 }
 
 + (void)load
@@ -148,13 +198,19 @@ NS_INLINE BOOL YDBIsMainThread()
 	}
 }
 
-- (id)initWithDatabase:(YapDatabase *)inDatabase
+- (id)initWithDatabase:(YapDatabase *)inDatabase tag:(NSString *)tag
 {
 	if ((self = [super init]))
 	{
+        _tag = tag;
 		database = inDatabase;
 		connectionQueue = dispatch_queue_create("YapDatabaseConnection", NULL);
-		
+
+        if ([YapDatabase logToConsole]) {
+            NSLog(@"[HostApp] [YapDatabaseConnection] alloc: %@ - memory address: %p", _tag, self);
+        }
+        [YapDatabaseConnection addToConnectionsDict:tag forPointer:(__bridge void *)(self)];
+
 		IsOnConnectionQueueKey = &IsOnConnectionQueueKey;
 		dispatch_queue_set_specific(connectionQueue, IsOnConnectionQueueKey, IsOnConnectionQueueKey, NULL);
 		
@@ -326,6 +382,11 @@ NS_INLINE BOOL YDBIsMainThread()
 
 - (void)dealloc
 {
+    if ([YapDatabase logToConsole]) {
+        NSLog(@"[HostApp] [YapDatabaseConnection] dealloc: %@ - memory address: %p", _tag, self);
+    }
+    [YapDatabaseConnection removeFromConnectionsDict:(__bridge void *)(self)];
+
 	YDBLogVerbose(@"Dealloc <YapDatabaseConnection %p: databaseName=%@>",
 	              self, [database.databasePath lastPathComponent]);
 	

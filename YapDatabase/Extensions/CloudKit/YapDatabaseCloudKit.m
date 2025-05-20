@@ -531,7 +531,7 @@ NSString *const YapDatabaseCloudKitInFlightChangeSetChangedNotification = @"YDBC
 {
 	if (completionDatabaseConnection == nil)
 	{
-		completionDatabaseConnection = [self.registeredDatabase newConnection];
+		completionDatabaseConnection = [self.registeredDatabase newConnectionWithTag:@"YapDatabaseConnection internal completionDatabaseConnection"];
 		completionDatabaseConnection.objectCacheEnabled = NO;
 		completionDatabaseConnection.metadataCacheEnabled = NO;
 	}
