@@ -488,7 +488,9 @@ extern NSString *const YapDatabaseAllKeysRemovedKey;
  * You should avoid creating more connections than you need.
  * Creating a new connection everytime you need to access the database is a recipe for foolishness.
 **/
-- (YapDatabaseConnection *)newConnection;
+- (YapDatabaseConnection *)newConnectionWithTag:(NSString *)tag;
++ (void)setLogToConsole:(BOOL)enabled;
++ (BOOL)logToConsole;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma mark Extensions

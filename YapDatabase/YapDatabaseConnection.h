@@ -79,6 +79,10 @@ typedef NS_OPTIONS(NSUInteger, YapDatabaseConnectionFlushMemoryFlags) {
 @interface YapDatabaseConnection : NSObject
 NS_ASSUME_NONNULL_BEGIN
 
+@property (nonatomic, strong) NSString *tag;
++ (NSMutableDictionary<NSString *, NSString *> *)connectionsDict;
++ (void)dumpConnectionsDict;
+
 /**
  * A database connection maintains a strong reference to its parent.
  *
